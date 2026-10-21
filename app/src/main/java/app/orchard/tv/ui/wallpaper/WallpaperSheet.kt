@@ -146,9 +146,14 @@ fun WallpaperSheet(visible: Boolean, onDismiss: () -> Unit, onStartScreensaver: 
                     SectionTitle(R.string.st_home_layout)
                     Group { note ->
                         Choices(
+                            R.string.st_style, stringResource(R.string.st_style_hint), note,
+                            listOf(false to R.string.st_style_standard, true to R.string.st_style_dock),
+                            AerialSettings.dockHome, AerialSettings::chooseDockHome, first = true,
+                        )
+                        Choices(
                             R.string.st_layout, stringResource(R.string.st_home_layout_hint), note,
                             listOf(false to R.string.st_home_standard, true to R.string.st_home_one_row),
-                            AerialSettings.oneRowHome, AerialSettings::chooseOneRowHome, first = true,
+                            AerialSettings.oneRowHome, AerialSettings::chooseOneRowHome,
                         )
                         Choices(
                             R.string.st_clock, stringResource(R.string.st_clock_hint), note,

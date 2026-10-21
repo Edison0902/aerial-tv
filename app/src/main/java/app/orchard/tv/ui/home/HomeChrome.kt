@@ -33,8 +33,10 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import app.orchard.tv.R
 import app.orchard.tv.system.NetKind
 import app.orchard.tv.system.NetworkStatus
 import app.orchard.tv.ui.components.Pressable
@@ -52,22 +54,28 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.roundToInt
 
-/** The current time, ticking on the minute. */
+/** The current time, ticking on the minute (or every second in the tvhome layout). */
 @Composable
-fun rememberNow(): State<LocalDateTime> = produceState(LocalDateTime.now()) {
+fun rememberNow(everySecond: Boolean = false): State<LocalDateTime> = produceState(LocalDateTime.now(), everySecond) {
+    val step = if (everySecond) 1_000L else 60_000L
     while (true) {
         value = LocalDateTime.now()
-        delay(60_000L - System.currentTimeMillis() % 60_000L + 30L)
+        delay(step - System.currentTimeMillis() % step + 30L)
     }
 }
 
 @Composable
-fun timeText(now: LocalDateTime): String {
+fun timeText(now: LocalDateTime, seconds: Boolean = false): String {
     val context = LocalContext.current
     // 24-hour unless the owner chose 12-hour. With the setting unset, Android falls back to the
     // locale, and zh_CN means 12-hour, which TV clocks here never show (TCL 65S515D, issue #15).
     val twelve = runCatching { android.provider.Settings.System.getString(context.contentResolver, android.provider.Settings.System.TIME_12_24) }.getOrNull() == "12"
-    val pattern = if (twelve) "h:mm" else "H:mm"
+    val pattern = when {
+        twelve && seconds -> "h:mm:ss"
+        twelve -> "h:mm"
+        seconds -> "H:mm:ss"
+        else -> "H:mm"
+    }
     return now.format(DateTimeFormatter.ofPattern(pattern))
 }
 
@@ -149,10 +157,38 @@ fun ShelfClock(now: LocalDateTime, modifier: Modifier = Modifier, alignEnd: Bool
 }
 
 /**
- * One-row Home: the time and the weather in one quiet line in the top left, level with the status
- * pill, so the wallpaper keeps the rest of the screen. A soft shadow keeps it readable on photos.
+ * tvhome-zh's clock, ported for AerialSettings.dockHome: a greeting over a thin clock that counts
+ * seconds, with the date beside it. Same top-left corner as ShelfClock, so the rest of Home lines
+ * up with the standard layout.
  */
 @Composable
+fun TvHomeClock(now: LocalDateTime, modifier: Modifier = Modifier, alignEnd: Boolean = false) {
+    val dim = Color.White.copy(alpha = 0.86f)
+    val quiet = Color.White.copy(alpha = 0.62f)
+    val greeting = when (now.hour) {
+        in 5..10 -> R.string.greeting_morning
+        in 11..13 -> R.string.greeting_noon
+        in 14..17 -> R.string.greeting_afternoon
+        in 18..22 -> R.string.greeting_evening
+        else -> R.string.greeting_night
+    }
+    Column(modifier, horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start) {
+        BasicText(stringResource(greeting), style = Type.Title.copy(color = quiet))
+        Row(verticalAlignment = Alignment.Bottom) {
+            BasicText(timeText(now, seconds = true), style = Type.Clock)
+            BasicText(
+                dateText(now),
+                style = Type.Title.copy(color = dim),
+                modifier = Modifier.padding(start = 18.dp, bottom = 12.dp),
+            )
+        }
+    }
+}
+
+/**
+ * One-row Home: the time and the weather in one quiet line in the top left, level with the status
+ * pill, so the wallpaper keeps the rest of the screen. A soft shadow keeps it readable on photos.
+ */@Composable
 fun CornerClock(now: LocalDateTime, modifier: Modifier = Modifier) {
     val dim = Color.White.copy(alpha = 0.92f)
     val shadow = Shadow(Color.Black.copy(alpha = 0.5f), blurRadius = 8f)

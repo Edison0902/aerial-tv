@@ -5,8 +5,10 @@
     <string name="guard_description">Keeps Aerial as your home screen on TVs that do not let you change it. Reads no screen content.</string>
 
     <string name="greeting_morning">Good morning</string>
+    <string name="greeting_noon">Good afternoon</string>
     <string name="greeting_afternoon">Good afternoon</string>
     <string name="greeting_evening">Good evening</string>
+    <string name="greeting_night">Good night</string>
 
     <string name="cc_title">Control Center</string>
     <string name="cc_inputs">Inputs</string>
@@ -83,6 +85,10 @@
     <string name="st_focus_style">Focus Style</string>
     <string name="st_home_layout">Home Screen</string>
     <string name="st_layout">Layout</string>
+    <string name="st_style">Style</string>
+    <string name="st_style_standard">Standard</string>
+    <string name="st_style_dock">Dock</string>
+    <string name="st_style_hint">Dock puts four apps on a bar at the bottom, in four columns over a black background, with a clock that counts seconds.</string>
     <string name="st_clock">Clock</string>
     <string name="st_clock_left">Top Left</string>
     <string name="st_clock_right">Top Right</string>

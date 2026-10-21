@@ -56,6 +56,12 @@ object AerialSettings {
     /** The clock, with the date and weather, in the top right instead of the top left. */
     var clockRight by mutableStateOf(false); private set
 
+    /**
+     * tvhome-style Home: four columns, a fixed bar of four apps at the bottom, a black background
+     * and a clock with seconds. Ported from mclhm8182/tvhome-zh at the owner's request.
+     */
+    var dockHome by mutableStateOf(false); private set
+
     /** Back on Home's top row starts the screensaver, as on tvOS; off for homes where it gets pressed by accident (issue #94). */
     var backStartsScreensaver by mutableStateOf(true); private set
 
@@ -86,6 +92,7 @@ object AerialSettings {
         showAllNames = prefs.getBoolean("show_all_names", false)
         oneRowHome = prefs.getBoolean("one_row_home", false)
         clockRight = prefs.getBoolean("clock_right", false)
+        dockHome = prefs.getBoolean("dock_home", false)
         backStartsScreensaver = prefs.getBoolean("back_starts_screensaver", true)
         screensaverMinutes = prefs.getInt("screensaver_minutes", DEFAULT_SCREENSAVER_MINUTES)
     }
@@ -129,6 +136,11 @@ object AerialSettings {
     fun chooseClockRight(on: Boolean) {
         clockRight = on
         app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean("clock_right", on) }
+    }
+
+    fun chooseDockHome(on: Boolean) {
+        dockHome = on
+        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean("dock_home", on) }
     }
 
     fun chooseBackStartsScreensaver(on: Boolean) {
