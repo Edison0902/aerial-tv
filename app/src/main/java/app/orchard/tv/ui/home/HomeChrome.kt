@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -36,6 +37,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import app.orchard.tv.R
 import app.orchard.tv.system.NetKind
 import app.orchard.tv.system.NetworkStatus
@@ -99,7 +102,13 @@ fun dateText(now: LocalDateTime): String {
  * MiTV-MFTR0: 90th percentile 20 -> 30 ms when the crossfade ran end to end).
  */
 @Composable
-fun HomeBackground(backdrop: ImageBitmap?, frosted: ImageBitmap?, scroll: () -> Float, collapse: Float) {
+fun HomeBackground(
+    backdrop: ImageBitmap?,
+    frosted: ImageBitmap?,
+    scroll: () -> Float,
+    collapse: Float,
+    alpha: Float = 1f,
+) {
     Crossfade(
         targetState = backdrop to frosted,
         animationSpec = tween(450, easing = Motion.EaseOut),
@@ -114,16 +123,17 @@ fun HomeBackground(backdrop: ImageBitmap?, frosted: ImageBitmap?, scroll: () -> 
                 drawRect(Color.Black)
                 return@Canvas
             }
+            if (alpha < 0.999f) drawRect(Color.Black)
             val full = IntSize(size.width.roundToInt(), size.height.roundToInt())
             val g = ((scroll() / collapse - 0.3f) / 0.4f).coerceIn(0f, 1f)
             if (dark == null) {
                 drawImage(
-                    bmp, dstSize = full, filterQuality = FilterQuality.Low,
+                    bmp, dstSize = full, filterQuality = FilterQuality.Low, alpha = alpha,
                     colorFilter = if (g > 0.01f) ColorFilter.tint(Color.Black.copy(alpha = g * 0.5f), BlendMode.SrcAtop) else null,
                 )
             } else {
-                if (g < 0.99f) drawImage(bmp, dstSize = full, filterQuality = FilterQuality.Low)
-                if (g > 0.01f) drawImage(dark, dstSize = full, filterQuality = FilterQuality.Low, alpha = g)
+                if (g < 0.99f) drawImage(bmp, dstSize = full, filterQuality = FilterQuality.Low, alpha = alpha)
+                if (g > 0.01f) drawImage(dark, dstSize = full, filterQuality = FilterQuality.Low, alpha = g * alpha)
             }
         }
     }
@@ -134,6 +144,60 @@ private fun darkened(src: ImageBitmap, alpha: Float): ImageBitmap {
     val out = src.asAndroidBitmap().copy(android.graphics.Bitmap.Config.ARGB_8888, true)
     android.graphics.Canvas(out).drawColor(android.graphics.Color.argb((alpha * 255).roundToInt(), 0, 0, 0))
     return out.asImageBitmap()
+}
+
+/**
+ * The tvhome layout's backdrop, baked once per focused app: the app's own blurred artwork over
+ * black, its tint glowing from behind the dock, and a shade that keeps the clock and the bar
+ * legible. Baked so Home still costs one full-screen draw per frame on a TV GPU.
+ */
+@Composable
+fun rememberDockBackdrop(art: app.orchard.tv.apps.TileArt?, photo: ImageBitmap?): ImageBitmap? = remember(art, photo) {
+    if (art == null && photo == null) return@remember null
+    val w = 960
+    val h = 540
+    val out = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(out)
+    canvas.drawColor(android.graphics.Color.BLACK)
+
+    // The owner's wallpaper, if there is one: a dark photograph reads far more like tvOS than a
+    // wash of the app's colour. Otherwise the focused app's own artwork.
+    val source = photo ?: art?.backdrop
+    if (source != null) {
+        val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG).apply {
+            alpha = if (photo != null) 205 else 165
+        }
+        canvas.drawBitmap(source.asAndroidBitmap(), null, android.graphics.Rect(0, 0, w, h), paint)
+    }
+
+    art?.let {
+        val tint = it.tint.copy(alpha = 0.20f).toArgb()
+        val clear = it.tint.copy(alpha = 0f).toArgb()
+        val glow = android.graphics.Paint().apply {
+            shader = android.graphics.RadialGradient(
+                w * 0.5f, h * 0.86f, w * 0.72f,
+                intArrayOf(tint, clear), floatArrayOf(0f, 1f),
+                android.graphics.Shader.TileMode.CLAMP,
+            )
+        }
+        canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), glow)
+    }
+
+    val shade = android.graphics.Paint().apply {
+        shader = android.graphics.LinearGradient(
+            0f, 0f, 0f, h.toFloat(),
+            intArrayOf(
+                android.graphics.Color.argb(185, 0, 0, 0),
+                android.graphics.Color.argb(40, 0, 0, 0),
+                android.graphics.Color.argb(90, 0, 0, 0),
+                android.graphics.Color.argb(235, 0, 0, 0),
+            ),
+            floatArrayOf(0f, 0.40f, 0.66f, 1f),
+            android.graphics.Shader.TileMode.CLAMP,
+        )
+    }
+    canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), shade)
+    out.asImageBitmap()
 }
 
 /**
@@ -173,13 +237,20 @@ fun TvHomeClock(now: LocalDateTime, modifier: Modifier = Modifier, alignEnd: Boo
         else -> R.string.greeting_night
     }
     Column(modifier, horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start) {
-        BasicText(stringResource(greeting), style = Type.Title.copy(color = quiet))
+        BasicText(
+            stringResource(greeting),
+            style = Type.Callout.copy(color = quiet, letterSpacing = 0.18.em),
+            modifier = Modifier.padding(bottom = 6.dp),
+        )
         Row(verticalAlignment = Alignment.Bottom) {
-            BasicText(timeText(now, seconds = true), style = Type.Clock)
+            BasicText(
+                timeText(now, seconds = true),
+                style = Type.Clock.copy(fontSize = 96.sp, lineHeight = 96.sp),
+            )
             BasicText(
                 dateText(now),
-                style = Type.Title.copy(color = dim),
-                modifier = Modifier.padding(start = 18.dp, bottom = 12.dp),
+                style = Type.Headline.copy(color = dim),
+                modifier = Modifier.padding(start = 20.dp, bottom = 10.dp),
             )
         }
     }

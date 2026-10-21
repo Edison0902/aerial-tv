@@ -9,6 +9,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntOffsetAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -56,7 +57,9 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -103,7 +106,7 @@ private class GridMetrics(screenW: Dp, screenH: Dp, oneRow: Boolean, private val
      * dock the row starts higher, so the first row clears the bar at the bottom.
      */
     val topRowY = when {
-        dockInset > 0.dp -> screenH * 0.44f
+        dockInset > 0.dp -> screenH * 0.425f
         oneRow -> screenH - pitchY - 12.dp
         else -> screenH * 0.555f
     }
@@ -156,6 +159,7 @@ fun HomeScreen(
     var focusedKey by remember { mutableStateOf<String?>(null) }
     var pillFocused by remember { mutableStateOf(false) }
     var dockFocused by remember { mutableStateOf(false) }
+    var dockFocusedKey by remember { mutableStateOf<String?>(null) }
     var lastFocusedIndex by remember { mutableStateOf(0) }
     val focusedIndex = gridApps.indexOfFirst { it.key == focusedKey }
     val focusedRow = if (pillFocused || dockFocused || focusedIndex < 0) 0 else focusedIndex / columns
@@ -267,7 +271,7 @@ fun HomeScreen(
         // The dock bar is fixed at the bottom; the grid's scroll stops above it.
         val dockTileW = (maxWidth - 56.dp * 2 - 20.dp * 3) / 4
         val dockTileH = dockTileW * 9f / 16f
-        val dockInset = if (dockHome && dockApps.isNotEmpty()) dockTileH + 40.dp else 0.dp
+        val dockInset = if (dockHome && dockApps.isNotEmpty()) dockTileH + 46.dp else 0.dp
         val metrics = remember(maxWidth, maxHeight, AerialSettings.oneRowHome, dockHome, dockInset) {
             GridMetrics(maxWidth, maxHeight, AerialSettings.oneRowHome && !dockHome, columns, dockInset)
         }
@@ -292,6 +296,7 @@ fun HomeScreen(
         )
 
         val ambientApp = apps.getOrNull(focusedIndex) ?: apps.firstOrNull()
+        val dockBackdrop = rememberDockBackdrop(ambientApp?.art, Wallpapers.frosted ?: Wallpapers.backdrop)
 
         val dragState = rememberDraggableState { delta ->
             dragged = true
@@ -316,10 +321,12 @@ fun HomeScreen(
                 },
         ) {
             HomeBackground(
-                // The chosen wallpaper; in "Follow App" mode, light from the focused app. The
-                // tvhome layout is black on purpose, the way that launcher is.
-                backdrop = if (dockHome) null else Wallpapers.backdrop ?: ambientApp?.art?.backdrop,
+                // Standard: the chosen wallpaper, or the focused app's light in "Follow App" mode.
+                // The tvhome layout uses a cinematic bake of that light: artwork, tint glow, shade.
+                backdrop = if (dockHome) dockBackdrop
+                else Wallpapers.backdrop ?: ambientApp?.art?.backdrop,
                 frosted = if (dockHome) null else Wallpapers.frosted.takeIf { Wallpapers.backdrop != null },
+                alpha = 1f,
                 scroll = { scroll.value },
                 collapse = collapsePx,
             )
@@ -377,6 +384,7 @@ fun HomeScreen(
                                 lastFocusedIndex = index
                                 pillFocused = false
                                 dockFocused = false
+                                dockFocusedKey = null
                             },
                             onClick = { bounds ->
                                 val mover = moving
@@ -401,31 +409,64 @@ fun HomeScreen(
 
         // tvhome-style bar: four apps on a fixed band above the bottom edge.
         if (dockHome && dockApps.isNotEmpty()) {
+            val dockLabel = dockFocusedKey?.let { k -> dockApps.firstOrNull { it.key == k }?.label }
+            val dockLabelAlpha by animateFloatAsState(
+                if (dockLabel != null) 1f else 0f, tween(160, easing = Motion.EaseOut), label = "dock-label",
+            )
             Box(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(dockTileH + 40.dp),
+                    .height(dockTileH + 46.dp),
             ) {
                 Canvas(Modifier.fillMaxSize()) {
                     // The bar is opaque: the grid scrolls behind it, and rows must not show through
                     // the gaps, the way tvhome-zh's dock covers them.
                     val inset = 28.dp.toPx()
                     val top = 8.dp.toPx()
+                    val barH = size.height - top - 10.dp.toPx()
                     drawRect(Color.Black, size = Size(size.width, size.height))
-                    drawRoundRect(
-                        color = Color.White.copy(alpha = 0.07f),
-                        topLeft = Offset(inset, top),
-                        size = Size(size.width - inset * 2, size.height - top - 8.dp.toPx()),
-                        cornerRadius = CornerRadius(26.dp.toPx()),
+                    // A short shadow above the bar: the shelf reads as sitting on the grid.
+                    drawRect(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.65f),
+                            startY = 0f,
+                            endY = top + 6.dp.toPx(),
+                        ),
+                        size = Size(size.width, top + 6.dp.toPx()),
                     )
-                    drawLine(
-                        Color.White.copy(alpha = 0.10f),
-                        Offset(inset + 26.dp.toPx(), top + 1f),
-                        Offset(size.width - inset - 26.dp.toPx(), top + 1f),
-                        1f,
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(
+                            0f to Color.White.copy(alpha = 0.115f),
+                            1f to Color.White.copy(alpha = 0.045f),
+                            startY = top,
+                            endY = top + barH,
+                        ),
+                        topLeft = Offset(inset, top),
+                        size = Size(size.width - inset * 2, barH),
+                        cornerRadius = CornerRadius(28.dp.toPx()),
+                    )
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = 0.13f),
+                        topLeft = Offset(inset, top),
+                        size = Size(size.width - inset * 2, barH),
+                        cornerRadius = CornerRadius(28.dp.toPx()),
+                        style = Stroke(width = 1.dp.toPx()),
                     )
                 }
+                // The focused app's name sits above the bar, as tvOS names the selected dock app.
+                BasicText(
+                    text = dockLabel ?: "",
+                    style = Type.Title.copy(
+                        color = Color.White.copy(alpha = 0.92f),
+                        shadow = Shadow(Color.Black.copy(alpha = 0.55f), blurRadius = 10f),
+                    ),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = (-6).dp)
+                        .graphicsLayer { alpha = dockLabelAlpha },
+                )
                 Row(
                     Modifier.align(Alignment.Center).padding(horizontal = metrics.margin),
                     horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -442,6 +483,7 @@ fun HomeScreen(
                                 appearDelayMs = 0,
                                 onFocused = {
                                     dockFocused = true
+                                    dockFocusedKey = app.key
                                     focusedKey = null
                                     pillFocused = false
                                 },
