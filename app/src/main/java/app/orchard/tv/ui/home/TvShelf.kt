@@ -1,6 +1,7 @@
 package app.orchard.tv.ui.home
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateIntOffsetAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -61,6 +62,7 @@ fun TvShelfHome(
     onDockLaunch: (AppEntry, Rect?) -> Unit,
 ) {
     val focusedIndex = apps.indexOfFirst { it.key == focusedKey }
+    val density = androidx.compose.ui.platform.LocalDensity.current
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val margin = 56.dp
@@ -96,6 +98,15 @@ fun TvShelfHome(
         ) {
             apps.forEachIndexed { index, app ->
                 key(app.key) {
+                    val base = with(density) {
+                        IntOffset((margin + pitch * index).roundToPx(), rowY.roundToPx())
+                    }
+                    // Re-ordering animates: a moved app slides to its slot instead of jumping.
+                    val slot by animateIntOffsetAsState(
+                        base,
+                        spring(dampingRatio = 0.86f, stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow),
+                        label = "shelf-slot",
+                    )
                     AppTile(
                         app = app,
                         width = tileW,
@@ -108,10 +119,7 @@ fun TvShelfHome(
                         onClick = { b -> onAppLaunch(app, b) },
                         onLongPress = { b -> onAppLongPress(app, b) },
                         modifier = Modifier.offset {
-                            IntOffset(
-                                (margin + pitch * index - scroll.value.dp).roundToPx(),
-                                rowY.roundToPx(),
-                            )
+                            IntOffset(slot.x - scroll.value.dp.roundToPx(), slot.y)
                         },
                     )
                 }

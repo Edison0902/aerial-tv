@@ -243,8 +243,8 @@ fun HomeScreen(
                     when (code) {
                         NativeKeyEvent.KEYCODE_DPAD_LEFT -> vm.moveBy(-1)
                         NativeKeyEvent.KEYCODE_DPAD_RIGHT -> vm.moveBy(1)
-                        NativeKeyEvent.KEYCODE_DPAD_UP -> vm.moveBy(-columns)
-                        NativeKeyEvent.KEYCODE_DPAD_DOWN -> vm.moveBy(columns)
+                        NativeKeyEvent.KEYCODE_DPAD_UP -> if (!dockHome) vm.moveBy(-columns)
+                        NativeKeyEvent.KEYCODE_DPAD_DOWN -> if (!dockHome) vm.moveBy(columns)
                         NativeKeyEvent.KEYCODE_BACK, NativeKeyEvent.KEYCODE_DPAD_CENTER,
                         NativeKeyEvent.KEYCODE_ENTER, NativeKeyEvent.KEYCODE_NUMPAD_ENTER -> vm.endMove()
                         else -> return@onPreviewKeyEvent false
