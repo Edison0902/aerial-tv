@@ -49,6 +49,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -331,6 +332,14 @@ fun HomeScreen(
                 collapse = collapsePx,
             )
 
+            // The grid is clipped above the dock: what you see over the bar is what you can reach,
+            // and no app row hides behind it.
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(if (dockHome) metrics.screenH - dockInset else metrics.screenH)
+                    .clipToBounds(),
+            ) {
             Box(Modifier.fillMaxSize().offset { IntOffset(0, -scroll.value.roundToInt()) }) {
                 val clockRight = AerialSettings.clockRight
                 if (dockHome) {
@@ -404,6 +413,7 @@ fun HomeScreen(
                         )
                     }
                 }
+            }
             }
         }
 
