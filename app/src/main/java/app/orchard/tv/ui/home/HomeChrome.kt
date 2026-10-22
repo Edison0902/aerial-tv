@@ -165,7 +165,7 @@ fun rememberDockBackdrop(art: app.orchard.tv.apps.TileArt?, photo: ImageBitmap?)
     val source = photo ?: art?.backdrop
     if (source != null) {
         val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG).apply {
-            alpha = if (photo != null) 205 else 165
+            alpha = if (photo != null) 200 else 165
         }
         canvas.drawBitmap(source.asAndroidBitmap(), null, android.graphics.Rect(0, 0, w, h), paint)
     }
@@ -187,10 +187,10 @@ fun rememberDockBackdrop(art: app.orchard.tv.apps.TileArt?, photo: ImageBitmap?)
         shader = android.graphics.LinearGradient(
             0f, 0f, 0f, h.toFloat(),
             intArrayOf(
-                android.graphics.Color.argb(185, 0, 0, 0),
-                android.graphics.Color.argb(40, 0, 0, 0),
-                android.graphics.Color.argb(90, 0, 0, 0),
-                android.graphics.Color.argb(235, 0, 0, 0),
+                android.graphics.Color.argb(160, 0, 0, 0),
+                android.graphics.Color.argb(20, 0, 0, 0),
+                android.graphics.Color.argb(70, 0, 0, 0),
+                android.graphics.Color.argb(230, 0, 0, 0),
             ),
             floatArrayOf(0f, 0.40f, 0.66f, 1f),
             android.graphics.Shader.TileMode.CLAMP,

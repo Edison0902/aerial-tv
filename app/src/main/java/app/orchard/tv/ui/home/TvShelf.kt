@@ -34,6 +34,8 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import app.orchard.tv.apps.AppEntry
 import app.orchard.tv.ui.theme.Motion
 import app.orchard.tv.ui.theme.Palette
@@ -52,6 +54,7 @@ fun TvShelfHome(
     dockApps: List<AppEntry>,
     focusedKey: String?,
     dockFocusedKey: String?,
+    title: String?,
     requester: (String) -> FocusRequester,
     enabled: Boolean,
     movingKey: String?,
@@ -70,7 +73,26 @@ fun TvShelfHome(
         val tileW = 140.dp
         val tileH = tileW * 9f / 16f
         val pitch = tileW + gap
-        val rowY = maxHeight * 0.40f
+        val rowY = maxHeight * 0.42f
+
+        // The focused app's name, large, in the empty upper half — the way tvOS lets the
+        // selected app own the screen instead of showing a clock.
+        androidx.compose.animation.Crossfade(
+            targetState = title,
+            animationSpec = androidx.compose.animation.core.tween(260),
+            label = "shelf-title",
+        ) { label ->
+            BasicText(
+                text = label ?: "",
+                style = Type.Clock.copy(
+                    fontSize = 46.sp,
+                    lineHeight = 50.sp,
+                    letterSpacing = (-0.02).em,
+                    shadow = Shadow(Color.Black.copy(alpha = 0.45f), blurRadius = 16f),
+                ),
+                modifier = Modifier.padding(start = margin, top = 48.dp),
+            )
+        }
 
         // The row follows focus, the way tvOS keeps the selected icon in view: it only moves when
         // the selected app would leave the edges, instead of re-centring on every step.
@@ -118,6 +140,7 @@ fun TvShelfHome(
                         onFocused = { onAppFocused(app) },
                         onClick = { b -> onAppLaunch(app, b) },
                         onLongPress = { b -> onAppLongPress(app, b) },
+                        labels = false,
                         modifier = Modifier.offset {
                             IntOffset(slot.x - scroll.value.dp.roundToPx(), slot.y)
                         },
@@ -129,7 +152,6 @@ fun TvShelfHome(
         // The favourites bar, always in the same place.
         val dockTileW = 150.dp
         val dockTileH = dockTileW * 9f / 16f
-        val dockLabel = dockFocusedKey?.let { k -> dockApps.firstOrNull { it.key == k }?.label }
         Box(
             Modifier
                 .align(Alignment.BottomCenter)
@@ -151,16 +173,6 @@ fun TvShelfHome(
                     )
                     .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(28.dp)),
             )
-            if (dockLabel != null) {
-                BasicText(
-                    dockLabel,
-                    style = Type.Title.copy(
-                        color = Color.White.copy(alpha = 0.92f),
-                        shadow = Shadow(Color.Black.copy(alpha = 0.5f), blurRadius = 10f),
-                    ),
-                    modifier = Modifier.align(Alignment.TopCenter).offset(y = (-22).dp),
-                )
-            }
             Row(
                 Modifier.align(Alignment.Center).padding(horizontal = margin),
                 horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(20.dp),

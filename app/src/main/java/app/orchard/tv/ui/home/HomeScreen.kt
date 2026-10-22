@@ -333,20 +333,15 @@ fun HomeScreen(
             )
 
             if (dockHome) {
-                // Apple TV shape: the clock, one horizontal row of apps, and the favourites bar.
-                TvHomeClock(
-                    now = now,
-                    alignEnd = AerialSettings.clockRight,
-                    modifier = Modifier
-                        .align(if (AerialSettings.clockRight) Alignment.TopEnd else Alignment.TopStart)
-                        .padding(horizontal = metrics.margin)
-                        .padding(top = 36.dp),
-                )
+                // Apple TV shape: one horizontal row of apps over the ambient artwork, a fixed
+                // favourites bar, and the time in the status pill like tvOS.
                 TvShelfHome(
                     apps = gridApps,
                     dockApps = dockApps,
                     focusedKey = focusedKey,
                     dockFocusedKey = dockFocusedKey,
+                    title = (gridApps.firstOrNull { it.key == focusedKey }
+                        ?: dockApps.firstOrNull { it.key == dockFocusedKey })?.label,
                     requester = { requester(it) },
                     enabled = gridEnabled,
                     movingKey = moving,
@@ -473,7 +468,7 @@ fun HomeScreen(
         StatusPill(
             now = now,
             network = vm.network,
-            showTime = inPill || (if (dragged) pastShelf else focusedRow > 0),
+            showTime = inPill || dockHome || (if (dragged) pastShelf else focusedRow > 0),
             showWeather = inPill,
             enabled = gridEnabled && moving == null,
             focusRequester = pillRequester,
