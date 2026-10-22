@@ -98,6 +98,7 @@ fun AppTile(
     onFocused: () -> Unit,
     onClick: (Rect?) -> Unit,
     onLongPress: (Rect?) -> Unit,
+    labels: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val reduced = LocalReducedMotion.current
@@ -373,7 +374,7 @@ fun AppTile(
             }
         }
 
-        BasicText(
+        if (labels) BasicText(
             text = app.label,
             style = Type.Headline.copy(
                 textAlign = TextAlign.Center,

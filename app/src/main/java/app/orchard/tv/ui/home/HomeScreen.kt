@@ -92,7 +92,7 @@ import kotlin.math.roundToInt
 
 private const val COLUMNS = 5
 
-/** Grid geometry for the screen at hand. On a 1080p TV this is a 960×540 dp canvas. */
+/** Grid geometry for the screen at hand. On a 1080p TV this is a 960脳540 dp canvas. */
 private class GridMetrics(screenW: Dp, screenH: Dp, oneRow: Boolean, private val columns: Int, private val dockInset: Dp = 0.dp) {
     val margin = 56.dp
     val gap = 28.dp
@@ -332,6 +332,44 @@ fun HomeScreen(
                 collapse = collapsePx,
             )
 
+            if (dockHome) {
+                // Apple TV shape: the clock, one horizontal row of apps, and the favourites bar.
+                TvHomeClock(
+                    now = now,
+                    alignEnd = AerialSettings.clockRight,
+                    modifier = Modifier
+                        .align(if (AerialSettings.clockRight) Alignment.TopEnd else Alignment.TopStart)
+                        .padding(horizontal = metrics.margin)
+                        .padding(top = 36.dp),
+                )
+                TvShelfHome(
+                    apps = gridApps,
+                    dockApps = dockApps,
+                    focusedKey = focusedKey,
+                    dockFocusedKey = dockFocusedKey,
+                    requester = { requester(it) },
+                    enabled = gridEnabled,
+                    movingKey = moving,
+                    onAppFocused = { app ->
+                        focusedKey = app.key
+                        dockFocused = false
+                        dockFocusedKey = null
+                        pillFocused = false
+                        lastFocusedIndex = gridApps.indexOfFirst { it.key == app.key }
+                    },
+                    onAppLaunch = { app, b -> if (moving == null) onLaunch(app, b) },
+                    onAppLongPress = { app, b ->
+                        if (moving == null) vm.overlay = Overlay.AppMenu(app.key, b ?: Rect.Zero)
+                    },
+                    onDockFocused = { app ->
+                        dockFocused = true
+                        dockFocusedKey = app.key
+                        focusedKey = null
+                        pillFocused = false
+                    },
+                    onDockLaunch = { app, b -> if (moving == null) onLaunch(app, b) },
+                )
+            } else {
             // The grid is clipped above the dock: what you see over the bar is what you can reach,
             // and no app row hides behind it.
             Box(
@@ -417,96 +455,7 @@ fun HomeScreen(
             }
         }
 
-        // tvhome-style bar: four apps on a fixed band above the bottom edge.
-        if (dockHome && dockApps.isNotEmpty()) {
-            val dockLabel = dockFocusedKey?.let { k -> dockApps.firstOrNull { it.key == k }?.label }
-            val dockLabelAlpha by animateFloatAsState(
-                if (dockLabel != null) 1f else 0f, tween(160, easing = Motion.EaseOut), label = "dock-label",
-            )
-            Box(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(dockTileH + 46.dp),
-            ) {
-                Canvas(Modifier.fillMaxSize()) {
-                    // The bar is opaque: the grid scrolls behind it, and rows must not show through
-                    // the gaps, the way tvhome-zh's dock covers them.
-                    val inset = 28.dp.toPx()
-                    val top = 8.dp.toPx()
-                    val barH = size.height - top - 10.dp.toPx()
-                    drawRect(Color.Black, size = Size(size.width, size.height))
-                    // A short shadow above the bar: the shelf reads as sitting on the grid.
-                    drawRect(
-                        Brush.verticalGradient(
-                            0f to Color.Transparent,
-                            1f to Color.Black.copy(alpha = 0.65f),
-                            startY = 0f,
-                            endY = top + 6.dp.toPx(),
-                        ),
-                        size = Size(size.width, top + 6.dp.toPx()),
-                    )
-                    drawRoundRect(
-                        brush = Brush.verticalGradient(
-                            0f to Color.White.copy(alpha = 0.115f),
-                            1f to Color.White.copy(alpha = 0.045f),
-                            startY = top,
-                            endY = top + barH,
-                        ),
-                        topLeft = Offset(inset, top),
-                        size = Size(size.width - inset * 2, barH),
-                        cornerRadius = CornerRadius(28.dp.toPx()),
-                    )
-                    drawRoundRect(
-                        color = Color.White.copy(alpha = 0.13f),
-                        topLeft = Offset(inset, top),
-                        size = Size(size.width - inset * 2, barH),
-                        cornerRadius = CornerRadius(28.dp.toPx()),
-                        style = Stroke(width = 1.dp.toPx()),
-                    )
-                }
-                // The focused app's name sits above the bar, as tvOS names the selected dock app.
-                BasicText(
-                    text = dockLabel ?: "",
-                    style = Type.Title.copy(
-                        color = Color.White.copy(alpha = 0.92f),
-                        shadow = Shadow(Color.Black.copy(alpha = 0.55f), blurRadius = 10f),
-                    ),
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .offset(y = (-6).dp)
-                        .graphicsLayer { alpha = dockLabelAlpha },
-                )
-                Row(
-                    Modifier.align(Alignment.Center).padding(horizontal = metrics.margin),
-                    horizontalArrangement = Arrangement.spacedBy(20.dp),
-                ) {
-                    dockApps.forEach { app ->
-                        key("dock-" + app.key) {
-                            AppTile(
-                                app = app,
-                                width = dockTileW,
-                                height = dockTileH,
-                                focusRequester = requester("dock:" + app.key),
-                                enabled = gridEnabled,
-                                moving = false,
-                                appearDelayMs = 0,
-                                onFocused = {
-                                    dockFocused = true
-                                    dockFocusedKey = app.key
-                                    focusedKey = null
-                                    pillFocused = false
-                                },
-                                onClick = { bounds -> if (moving == null) onLaunch(app, bounds) },
-                                // No menu here: moving an app between the bar and the grid is not
-                                // wired up yet, and the menu's move would index the wrong list.
-                                onLongPress = { },
-                                modifier = Modifier,
-                            )
-                        }
-                    }
-                }
-            }
+
         }
 
         // Rows that scroll up under the status pill fade out instead of colliding with it.
