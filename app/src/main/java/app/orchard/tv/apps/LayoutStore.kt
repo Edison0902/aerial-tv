@@ -32,6 +32,9 @@ class LayoutStore(context: Context) {
     fun hide(key: String) { hidden = hidden + key; save() }
     fun unhide(key: String) { hidden = hidden - key; save() }
 
+    /** The visible keys in order, for the ADB arrange action. */
+    fun visibleOrder(): List<String> = order.filter { it !in hidden }
+
     /**
      * Moves [key] onto the slot of [target] among the visible tiles, shifting the ones in between,
      * the way tvOS reflows its grid while an app is being moved.

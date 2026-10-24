@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import app.orchard.tv.apps.CustomIcons
+import app.orchard.tv.apps.LayoutStore
 import app.orchard.tv.apps.TileSheet
 import app.orchard.tv.settings.AerialSettings
 import kotlinx.coroutines.launch
@@ -49,6 +50,35 @@ class ConfigReceiver : BroadcastReceiver() {
                 android.util.Log.i("AerialIcons", "set_icon $pkg -> $ok")
             }
             resultData = "setting icon"
+            return
+        }
+        // Re-ordering and hiding from a computer: "pkg:+1" moves the app a slot right (negative
+        // left), "pkg:true" hides it and "pkg:false" puts it back, exactly as the remote does.
+        intent.getStringExtra("arrange")?.takeIf {
+            Regex("^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)+:([-+]?[0-9]+|true|false)$").matches(it)
+        }?.let { spec ->
+            val app = context.applicationContext
+            @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+            kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+                val pkg = spec.substringBefore(':')
+                val arg = spec.substringAfter(':')
+                LayoutStore(app).let { store ->
+                    when {
+                        arg == "true" -> store.hide(pkg)
+                        arg == "false" -> store.unhide(pkg)
+                        else -> {
+                            val visible = store.visibleOrder()
+                            val from = visible.indexOf(pkg)
+                            if (from >= 0) {
+                                val to = (from + arg.toInt()).coerceIn(0, visible.lastIndex)
+                                if (to != from) store.move(pkg, visible[to])
+                            }
+                        }
+                    }
+                }
+                android.util.Log.i("AerialArrange", "arrange $spec done")
+            }
+            resultData = "arranging"
             return
         }
         if (intent.getBooleanExtra("clear_pin", false)) {
