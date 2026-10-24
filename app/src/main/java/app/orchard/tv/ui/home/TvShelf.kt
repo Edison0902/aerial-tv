@@ -119,50 +119,56 @@ fun TvShelfHome(
                     ),
                 )
             }
+            // The date sits under the name; the weather lives on the right, in its own column.
             val dim = Color.White.copy(alpha = 0.82f)
-            Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                BasicText(
-                    dateText(now),
-                    style = Type.Title.copy(color = dim, shadow = quiet),
-                )
-                Weather.now?.let { w ->
-                    // The weather in a small glass bubble, apart from the date.
-                    Row(
-                        Modifier
-                            .padding(start = 14.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(Color.White.copy(alpha = 0.14f), Color.White.copy(alpha = 0.05f)),
-                                ),
-                            )
-                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
-                            .padding(horizontal = 16.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(9.dp),
-                    ) {
-                        GlyphIcon(glyphFor(w.kind, w.day), Color.White, 21.dp)
-                        BasicText(
-                            stringResource(conditionFor(w.kind)) + " ${w.celsius}°",
-                            style = Type.Title.copy(color = Color.White, shadow = quiet),
+            BasicText(
+                dateText(now),
+                style = Type.Title.copy(color = dim, shadow = quiet),
+                modifier = Modifier.padding(top = 14.dp),
+            )
+        }
+
+        // Right column: the weather bubble over the hours ahead, aligned to the right margin.
+        Column(
+            Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 78.dp, end = margin),
+            horizontalAlignment = Alignment.End,
+        ) {
+            Weather.now?.let { w ->
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.White.copy(alpha = 0.14f), Color.White.copy(alpha = 0.05f)),
+                            ),
                         )
-                        Weather.place?.takeIf { it.length <= 12 }?.let {
-                            BasicText(
-                                it,
-                                style = Type.Callout.copy(color = Color.White.copy(alpha = 0.75f)),
-                            )
-                        }
+                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
+                        .padding(horizontal = 16.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(9.dp),
+                ) {
+                    GlyphIcon(glyphFor(w.kind, w.day), Color.White, 21.dp)
+                    BasicText(
+                        stringResource(conditionFor(w.kind)) + " ${w.celsius}°",
+                        style = Type.Title.copy(color = Color.White, shadow = quiet),
+                    )
+                    Weather.place?.takeIf { it.length <= 12 }?.let {
+                        BasicText(
+                            it,
+                            style = Type.Callout.copy(color = Color.White.copy(alpha = 0.75f)),
+                        )
                     }
                 }
             }
-            // The hours ahead: a quiet strip under the date.
             if (Weather.hourly.size >= 2) {
                 Row(
-                    Modifier.padding(top = 16.dp),
+                    Modifier.padding(top = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(30.dp),
+                    horizontalArrangement = Arrangement.spacedBy(22.dp),
                 ) {
-                    Weather.hourly.forEachIndexed { i, h ->
+                    Weather.hourly.take(6).forEachIndexed { i, h ->
                         val bright = i == 0
                         val tone = Color.White.copy(alpha = if (bright) 0.92f else 0.62f)
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
