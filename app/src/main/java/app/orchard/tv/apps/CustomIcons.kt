@@ -46,13 +46,25 @@ object CustomIcons {
         val tmp = File.createTempFile("icon", ".bin", cacheDir)
         return try {
             tmp.outputStream().use { input.copyTo(it) }
-            val bmp = Images.decodeCover(tmp, W, H) ?: return false
-            fileFor(pkg).outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            bmp.recycle()
-            true
+            store(pkg, tmp)
         } finally {
             tmp.delete()
         }
+    }
+
+    /** Stores the picture at [src] as the app's tile. Off the main thread; false if it is not an image. */
+    fun import(pkg: String, src: File): Boolean = store(pkg, src)
+
+    private fun store(pkg: String, src: File): Boolean = try {
+        val bmp = Images.decodeCover(src, W, H) ?: return false.also {
+            android.util.Log.e("AerialIcons", "store $pkg: decodeCover null for ${src.path} exists=${src.exists()}")
+        }
+        fileFor(pkg).outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        bmp.recycle()
+        true
+    } catch (e: Exception) {
+        android.util.Log.e("AerialIcons", "store $pkg failed", e)
+        false
     }
 
     fun clear(pkg: String) {

@@ -24,7 +24,7 @@ import kotlin.math.sin
  * A small set of line glyphs drawn in the spirit of SF Symbols: one stroke weight, round caps,
  * optically centered in a square box. Drawn, not bundled, so they stay crisp at every size.
  */
-enum class Glyph { Wifi, Ethernet, Offline, Gear, Input, Speaker, SpeakerMuted, Switches, EyeSlash, Move, Info, Trash, ChevronRight, ChevronLeft, Check, Hdmi, Antenna, Av, Sun, Photo, Play, Bag, CloudSun, Calendar, Cast, Shield, Globe, Moon, Cloud, CloudRain, CloudSnow, CloudFog, CloudBolt }
+enum class Glyph { Wifi, Ethernet, Offline, Gear, Input, Speaker, SpeakerMuted, Switches, EyeSlash, Move, Info, Trash, ChevronRight, ChevronLeft, Check, Hdmi, Antenna, Av, MusicNote, Sun, Photo, Play, Bag, CloudSun, Calendar, Cast, Shield, Globe, Moon, Cloud, CloudRain, CloudSnow, CloudFog, CloudBolt }
 
 @Composable
 fun GlyphIcon(glyph: Glyph, color: Color, size: Dp, modifier: Modifier = Modifier, level: Float = 1f) {
@@ -210,6 +210,16 @@ fun DrawScope.drawGlyph(glyph: Glyph, color: Color, level: Float = 1f) {
         Glyph.Av -> {
             drawCircle(color, radius = 0.3f * s, center = p(0.5f, 0.5f), style = stroke)
             drawCircle(color, radius = 0.09f * s, center = p(0.5f, 0.5f))
+        }
+        Glyph.MusicNote -> {
+            // A single eighth note: filled head, stem, and a flag.
+            drawOval(color, p(0.2f, 0.6f), Size(0.3f * s, 0.24f * s))
+            line(0.5f, 0.72f, 0.6f, 0.16f)
+            val flag = Path().apply {
+                moveTo(0.6f * s, 0.16f * s)
+                cubicTo(0.74f * s, 0.2f * s, 0.8f * s, 0.3f * s, 0.78f * s, 0.46f * s)
+            }
+            drawPath(flag, color, style = stroke)
         }
         Glyph.Bag -> {
             // A shopping bag, the app store.

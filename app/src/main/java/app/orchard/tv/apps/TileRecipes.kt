@@ -33,6 +33,9 @@ object TileRecipes {
         // 我的电视: live channels; its icon and banner are only its name in grey. Teal as on tuner inputs.
         "com.lizongying.mytv" to TileRecipe(top = 0xFF1FA88E.toInt(), bottom = 0xFF0E5C55.toInt(), glyph = app.orchard.tv.ui.theme.Glyph.Antenna),
         // Checked against APKs from 当贝市场, drawn on Xiaomi MiTV-MFTR0.
+        // 抖音TV: the banner is a plain primary-colour field and the adaptive icon's foreground
+        // misrenders, so it gets Aerial's note on the app's near-black, as its own icon has.
+        "com.douyin.tv" to TileRecipe(top = 0xFF2A2A30.toInt(), bottom = 0xFF101014.toInt(), glyph = app.orchard.tv.ui.theme.Glyph.MusicNote),
         "com.baidu.netdisk.tv" to TileRecipe(useIcon = true), // 百度网盘: the banner adds its name and "TV版" beside the icon
         "com.dangbei.dbmusic" to TileRecipe(useIcon = true), // BesTV当贝音乐: name and slogan on a white banner
         "com.dangbei.tvlauncher" to TileRecipe(useIcon = true), // 当贝桌面: the banner is its name and a version badge
