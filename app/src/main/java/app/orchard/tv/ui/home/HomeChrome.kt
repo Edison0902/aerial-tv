@@ -182,23 +182,22 @@ private fun bakeDockBackdrop(art: app.orchard.tv.apps.TileArt?, photo: ImageBitm
     // sweep of the app's tint from the upper left and a soft light over the title, which reads
     // cleaner than the app's 64×36 ambient light blown up (that washed out into mud).
     if (photo == null) {
+        canvas2d.drawColor(android.graphics.Color.rgb(10, 12, 17))
+        // A quieter, desaturated sweep of the app's tint reads premium over the near-black base.
+        val hsv = FloatArray(3)
+        android.graphics.Color.colorToHSV(tint, hsv)
+        hsv[1] = hsv[1] * 0.5f
+        hsv[2] = (hsv[2] * 0.8f + 0.06f).coerceAtMost(0.62f)
+        val quietTint = android.graphics.Color.HSVToColor(hsv)
         val sweep = android.graphics.Paint().apply {
             shader = android.graphics.LinearGradient(
-                0f, 0f, w * 0.9f, h * 0.75f,
-                intArrayOf(tint and 0x00FFFFFF or (android.graphics.Color.alpha(tint).coerceIn(60, 110) shl 24), 0x00000000),
+                0f, 0f, w * 0.95f, h * 0.8f,
+                intArrayOf(quietTint and 0x00FFFFFF or (72 shl 24), 0x00000000),
                 floatArrayOf(0f, 1f),
                 android.graphics.Shader.TileMode.CLAMP,
             )
         }
         canvas2d.drawRect(0f, 0f, w.toFloat(), h.toFloat(), sweep)
-        val base = android.graphics.Paint().apply {
-            shader = android.graphics.RadialGradient(
-                w * 0.22f, h * 0.12f, w * 0.55f,
-                intArrayOf(0x33FFFFFF, 0x00000000), floatArrayOf(0f, 1f),
-                android.graphics.Shader.TileMode.CLAMP,
-            )
-        }
-        canvas2d.drawRect(0f, 0f, w.toFloat(), h.toFloat(), base)
     } else {
         val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG).apply { alpha = 200 }
         canvas2d.drawBitmap(photo.asAndroidBitmap(), null, android.graphics.Rect(0, 0, w, h), paint)
@@ -206,11 +205,15 @@ private fun bakeDockBackdrop(art: app.orchard.tv.apps.TileArt?, photo: ImageBitm
 
     // The tint glowing from behind the dock bar, and a shade keeping the title and tiles legible.
     art?.let {
-        val clear = it.tint.copy(alpha = 0f).toArgb()
+        val hsv = FloatArray(3)
+        android.graphics.Color.colorToHSV(it.tint.toArgb(), hsv)
+        hsv[1] = hsv[1] * 0.5f
+        val clear = android.graphics.Color.HSVToColor(hsv) and 0x00FFFFFF
         val glow = android.graphics.Paint().apply {
             shader = android.graphics.RadialGradient(
                 w * 0.5f, h * 0.86f, w * 0.72f,
-                intArrayOf(it.tint.copy(alpha = 0.22f).toArgb(), clear), floatArrayOf(0f, 1f),
+                intArrayOf(android.graphics.Color.HSVToColor(hsv) and 0x00FFFFFF or (46 shl 24), clear),
+                floatArrayOf(0f, 1f),
                 android.graphics.Shader.TileMode.CLAMP,
             )
         }

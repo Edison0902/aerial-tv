@@ -127,11 +127,11 @@ fun TvShelfHome(
                     .clip(RoundedCornerShape(18.dp))
                     .background(
                         Brush.verticalGradient(
-                            listOf(Color.White.copy(alpha = 0.13f), Color.White.copy(alpha = 0.04f)),
+                            listOf(Color.Black.copy(alpha = 0.34f), Color.Black.copy(alpha = 0.20f)),
                         ),
                     )
-                    .border(1.dp, Color.White.copy(alpha = 0.11f), RoundedCornerShape(18.dp))
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(18.dp))
+                    .padding(horizontal = 18.dp, vertical = 9.dp),
             ) {
                 BasicText(
                     dateText(now),
@@ -153,11 +153,11 @@ fun TvShelfHome(
                         .clip(RoundedCornerShape(22.dp))
                         .background(
                             Brush.verticalGradient(
-                                listOf(Color.White.copy(alpha = 0.15f), Color.White.copy(alpha = 0.05f)),
+                                listOf(Color.Black.copy(alpha = 0.36f), Color.Black.copy(alpha = 0.20f)),
                             ),
                         )
-                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(22.dp))
-                        .padding(horizontal = 18.dp, vertical = 13.dp),
+                        .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(22.dp))
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     val w = Weather.now!!
