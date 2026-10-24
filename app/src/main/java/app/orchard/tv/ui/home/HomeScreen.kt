@@ -72,6 +72,7 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import app.orchard.tv.CcPage
 import app.orchard.tv.HomeViewModel
@@ -92,8 +93,11 @@ import kotlin.math.roundToInt
 
 private const val COLUMNS = 5
 
-/** Grid geometry for the screen at hand. On a 1080p TV this is a 960脳540 dp canvas. */
-private class GridMetrics(screenW: Dp, screenH: Dp, oneRow: Boolean, private val columns: Int, private val dockInset: Dp = 0.dp) {
+/**
+ * Grid geometry for the screen at hand. On a 1080p TV this is a 960脳540 dp canvas. The tvhome
+ * layout does not use it: TvShelfHome lays out its own row and bar.
+ */
+private class GridMetrics(screenW: Dp, screenH: Dp, oneRow: Boolean, private val columns: Int) {
     val margin = 56.dp
     val gap = 28.dp
     val tileW = (screenW - margin * 2 - gap * (columns - 1)) / columns
@@ -101,19 +105,12 @@ private class GridMetrics(screenW: Dp, screenH: Dp, oneRow: Boolean, private val
     val pitchX = tileW + gap
     val pitchY = tileH + 50.dp
 
-    /**
-     * The top row sits a little past the middle, under the shelf, as on tvOS. In one-row mode it
-     * sits low, with only the top of the second row showing under the focused app's name. With the
-     * dock the row starts higher, so the first row clears the bar at the bottom.
-     */
-    val topRowY = when {
-        dockInset > 0.dp -> screenH * 0.425f
-        oneRow -> screenH - pitchY - 12.dp
-        else -> screenH * 0.555f
-    }
+    /** The top row sits a little past the middle, under the shelf, as on tvOS. In one-row mode it
+     * sits low, with only the top of the second row showing under the focused app's name. */
+    val topRowY = if (oneRow) screenH - pitchY - 12.dp else screenH * 0.555f
 
-    /** Top of the shelf clock, in the standard layout. */
-    val clockY = if (dockInset > 0.dp) 36.dp else screenH * 0.555f - 196.dp
+    /** Top of the shelf clock. */
+    val clockY = screenH * 0.555f - 196.dp
 
     /** Where a row rests once you go down into the grid: the row above stays in view. */
     val restY = screenH * 0.37f
@@ -124,7 +121,7 @@ private class GridMetrics(screenW: Dp, screenH: Dp, oneRow: Boolean, private val
     fun scrollFor(row: Int, rows: Int): Dp {
         if (row <= 0) return 0.dp
         val wanted = topRowY + pitchY * row - restY
-        val bottom = topRowY + pitchY * rows + 36.dp - (screenH - dockInset)
+        val bottom = topRowY + pitchY * rows + 36.dp - screenH
         return minOf(wanted, maxOf(bottom, topRowY + pitchY - restY))
     }
 }
@@ -144,14 +141,14 @@ fun HomeScreen(
     val reduced = LocalReducedMotion.current
     val density = LocalDensity.current
     val dockHome = AerialSettings.dockHome
-    val now by rememberNow(everySecond = dockHome)
+    val now by rememberNow()
     val scope = rememberCoroutineScope()
 
-    // tvhome-style dock: the first four apps sit in a fixed bar under the grid, which shows the rest.
+    // tvhome-style dock: the first four apps sit in a fixed bar under the row, which shows the rest.
     val dockCount = if (dockHome) minOf(4, apps.size) else 0
     val dockApps = if (dockCount > 0) apps.take(dockCount) else emptyList()
     val gridApps = apps.drop(dockCount)
-    val columns = if (dockHome) 4 else COLUMNS
+    val columns = COLUMNS
 
     val requesters = remember { HashMap<String, FocusRequester>() }
     fun requester(key: String) = requesters.getOrPut(key) { FocusRequester() }
@@ -182,14 +179,22 @@ fun HomeScreen(
         runCatching { requester(app.key).requestFocus() }
     }
 
-    fun focusFirst() = if (gridApps.isNotEmpty()) focusApp(0) else focusDockFirst()
+    // Home starts on the first app, which in the dock layout sits in the bar.
+    fun focusFirst() = if (gridApps.isNotEmpty() && !dockHome) focusApp(0) else focusDockFirst()
+
+    // While an app is being moved it can cross between the row and the bar, and its tile's
+    // FocusRequester key changes with it ("dock:" prefix).
+    fun moverRequester(key: String) =
+        requester(if (dockApps.any { it.key == key }) "dock:" + key else key)
 
     // First focus once the apps are in; afterwards, put focus back wherever it was when an overlay closes.
     LaunchedEffect(vm.loaded, overlay) {
         if (!vm.loaded || overlay != Overlay.None) return@LaunchedEffect
         withFrameNanos { }
         val index = gridApps.indexOfFirst { it.key == focusedKey }
-        if (pillFocused && focusedKey != null) runCatching { pillRequester.requestFocus() } else focusApp(if (index >= 0) index else 0)
+        if (pillFocused && focusedKey != null) runCatching { pillRequester.requestFocus() }
+        else if (index >= 0) focusApp(index)
+        else focusFirst()
     }
     // An app vanished from under the focus (uninstalled or hidden): take its neighbour.
     LaunchedEffect(apps) {
@@ -197,20 +202,22 @@ fun HomeScreen(
             withFrameNanos { }
             focusApp(lastFocusedIndex)
         }
-        // While moving, focus follows the app to its new slot.
-        moving?.let { withFrameNanos { }; runCatching { requester(it).requestFocus() } }
+        // While moving, focus follows the app to its new slot — into the bar as well.
+        moving?.let { withFrameNanos { }; runCatching { moverRequester(it).requestFocus() } }
     }
     // Moving starts from the menu, which is still on screen for a frame: focus the app once it is gone.
     LaunchedEffect(moving) {
         val key = moving ?: return@LaunchedEffect
         withFrameNanos { }
-        runCatching { requester(key).requestFocus() }
+        runCatching { moverRequester(key).requestFocus() }
     }
     val windowFocused = LocalWindowInfo.current.isWindowFocused
+    var shelfReset by remember { mutableStateOf(0) }
     LaunchedEffect(windowFocused, vm.homeResetPending, vm.loaded) {
         if (windowFocused && vm.homeResetPending && vm.loaded) {
             withFrameNanos { }
             dragged = false
+            shelfReset++
             focusFirst()
             vm.homeResetPending = false
         }
@@ -218,11 +225,12 @@ fun HomeScreen(
 
     BackHandler(enabled = overlay == Overlay.None && moving == null) {
         // tvOS: Back from inside the grid returns to the top row; Back on the top row starts the
-        // screensaver. A grid scrolled by touch counts as being inside it.
+        // screensaver. A grid scrolled by touch counts as being inside it. The dock layout is one
+        // row, so Back always starts the screensaver there.
         val scrolled = dragged && scroll.value > 1f
         dragged = false
         // Handled even when that is turned off: unhandled, Back would close Home itself.
-        if (focusedRow > 0 || scrolled) focusApp(focusedIndex.coerceAtLeast(0) % columns)
+        if (!dockHome && (focusedRow > 0 || scrolled)) focusApp(focusedIndex.coerceAtLeast(0) % columns)
         else if (AerialSettings.backStartsScreensaver) onStartScreensaver()
     }
 
@@ -269,23 +277,26 @@ fun HomeScreen(
                 }
             },
     ) {
-        // The dock bar is fixed at the bottom; the grid's scroll stops above it.
-        val dockTileW = (maxWidth - 56.dp * 2 - 20.dp * 3) / 4
-        val dockTileH = dockTileW * 9f / 16f
-        val dockInset = if (dockHome && dockApps.isNotEmpty()) dockTileH + 46.dp else 0.dp
-        val metrics = remember(maxWidth, maxHeight, AerialSettings.oneRowHome, dockHome, dockInset) {
-            GridMetrics(maxWidth, maxHeight, AerialSettings.oneRowHome && !dockHome, columns, dockInset)
+        // The dock bar is laid out by TvShelfHome; these metrics are the standard grid's.
+        val metrics = remember(maxWidth, maxHeight, AerialSettings.oneRowHome) {
+            GridMetrics(maxWidth, maxHeight, AerialSettings.oneRowHome, columns)
         }
         val rows = (gridApps.size + columns - 1) / columns
         val collapsePx = with(density) { (metrics.topRowY - metrics.restY).toPx() }
 
-        val target = with(density) { metrics.scrollFor(focusedRow, rows).toPx() }
+        // In the dock layout the grid never scrolls (TvShelfHome scrolls its own row), and the
+        // grid scroll drives the top fade and the backdrop shade — keep it pinned at zero there,
+        // or a value left over from before would dim the title and the background.
+        val target = with(density) {
+            (if (dockHome) 0.dp else metrics.scrollFor(focusedRow, rows)).toPx()
+        }
         val maxScroll = with(density) { metrics.scrollFor(rows - 1, rows).toPx() }.coerceAtLeast(0f)
         LaunchedEffect(maxScroll) { scroll.updateBounds(0f, maxScroll) }
         val pastShelf by remember(collapsePx) { derivedStateOf { scroll.value > collapsePx / 2 } }
         val decay = rememberSplineBasedDecay<Float>()
         LaunchedEffect(target, dragged, dockFocused) {
-            if (dragged || dockFocused) return@LaunchedEffect
+            // Standard layout only: with the bar focused the grid stays where it was.
+            if (dragged || (dockFocused && !dockHome)) return@LaunchedEffect
             if (reduced) scroll.snapTo(target)
             // A spring keeps its velocity when a quick second press retargets it mid-flight.
             else scroll.animateTo(target, spring(dampingRatio = 1f, stiffness = 170f))
@@ -296,8 +307,17 @@ fun HomeScreen(
             tween(320, easing = Motion.EaseOut), label = "backdrop-blur",
         )
 
-        val ambientApp = apps.getOrNull(focusedIndex) ?: apps.firstOrNull()
-        val dockBackdrop = rememberDockBackdrop(ambientApp?.art, Wallpapers.frosted ?: Wallpapers.backdrop)
+        // In the dock layout the light follows the focused app, in the row or in the bar — the
+        // pre-fix code indexed the full list with the row's index and lit the wrong app.
+        val focusedEntry = gridApps.firstOrNull { it.key == focusedKey }
+            ?: dockApps.firstOrNull { it.key == dockFocusedKey }
+        val ambientApp = focusedEntry ?: gridApps.firstOrNull() ?: dockApps.firstOrNull()
+        val dockBackdrop = if (dockHome) rememberDockBackdrop(
+            focusedEntry?.key,
+            ambientApp?.art,
+            Wallpapers.backdrop,
+            IntSize(with(density) { maxWidth.roundToPx() }, with(density) { maxHeight.roundToPx() }),
+        ) else null
 
         val dragState = rememberDraggableState { delta ->
             dragged = true
@@ -309,7 +329,7 @@ fun HomeScreen(
                 .draggable(
                     dragState,
                     Orientation.Vertical,
-                    enabled = gridEnabled && rows > 1,
+                    enabled = gridEnabled && rows > 1 && !dockHome,
                     onDragStopped = { velocity ->
                         if (!reduced) scroll.animateDecay(-velocity, decay)
                     },
@@ -328,10 +348,10 @@ fun HomeScreen(
                 else Wallpapers.backdrop ?: ambientApp?.art?.backdrop,
                 frosted = if (dockHome) null else Wallpapers.frosted.takeIf { Wallpapers.backdrop != null },
                 alpha = 1f,
+                crossfadeMs = if (dockHome) 0 else 450,
                 scroll = { scroll.value },
                 collapse = collapsePx,
             )
-
             if (dockHome) {
                 // Apple TV shape: one horizontal row of apps over the ambient artwork, a fixed
                 // favourites bar, and the time in the status pill like tvOS.
@@ -342,6 +362,8 @@ fun HomeScreen(
                     dockFocusedKey = dockFocusedKey,
                     title = (gridApps.firstOrNull { it.key == focusedKey }
                         ?: dockApps.firstOrNull { it.key == dockFocusedKey })?.label,
+                    now = now,
+                    reset = shelfReset,
                     requester = { requester(it) },
                     enabled = gridEnabled,
                     movingKey = moving,
@@ -363,6 +385,9 @@ fun HomeScreen(
                         pillFocused = false
                     },
                     onDockLaunch = { app, b -> if (moving == null) onLaunch(app, b) },
+                    onDockLongPress = { app, b ->
+                        if (moving == null) vm.overlay = Overlay.AppMenu(app.key, b ?: Rect.Zero)
+                    },
                 )
             } else {
             // The grid is clipped above the dock: what you see over the bar is what you can reach,
@@ -370,22 +395,12 @@ fun HomeScreen(
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(if (dockHome) metrics.screenH - dockInset else metrics.screenH)
+                    .height(metrics.screenH)
                     .clipToBounds(),
             ) {
             Box(Modifier.fillMaxSize().offset { IntOffset(0, -scroll.value.roundToInt()) }) {
                 val clockRight = AerialSettings.clockRight
-                if (dockHome) {
-                    TvHomeClock(
-                        now = now,
-                        alignEnd = clockRight,
-                        modifier = Modifier
-                            .align(if (clockRight) Alignment.TopEnd else Alignment.TopStart)
-                            .padding(horizontal = metrics.margin)
-                            .padding(top = 36.dp)
-                            .graphicsLayer { alpha = 1f - (scroll.value / collapsePx * 1.6f).coerceIn(0f, 1f) },
-                    )
-                } else if (!AerialSettings.oneRowHome) {
+                if (!AerialSettings.oneRowHome) {
                     ShelfClock(
                         now = now,
                         alignEnd = clockRight,
@@ -473,13 +488,10 @@ fun HomeScreen(
             enabled = gridEnabled && moving == null,
             focusRequester = pillRequester,
             onFocused = { gained ->
-                // The window hands its first focus to the top-most control; the top row is where Home starts.
+                // The window hands its first focus to the top-most control; Home starts on the first app.
                 if (gained) {
-                    if (focusedKey == null) {
-                        if (apps.isNotEmpty()) focusApp(0)
-                    } else {
-                        pillFocused = true
-                    }
+                    if (focusedKey == null && dockFocusedKey == null) focusFirst()
+                    else pillFocused = true
                 }
             },
             onClick = {

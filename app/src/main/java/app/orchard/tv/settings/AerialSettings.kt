@@ -57,8 +57,9 @@ object AerialSettings {
     var clockRight by mutableStateOf(false); private set
 
     /**
-     * tvhome-style Home: four columns, a fixed bar of four apps at the bottom, a black background
-     * and a clock with seconds. Ported from mclhm8182/tvhome-zh at the owner's request.
+     * tvhome-style Home: the first four apps on a bar at the bottom, the rest in one large row
+     * above, the focused app's name over the top. Ported from mclhm8182/tvhome-zh at the owner's
+     * request.
      */
     var dockHome by mutableStateOf(false); private set
 

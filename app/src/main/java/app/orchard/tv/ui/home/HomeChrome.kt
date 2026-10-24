@@ -34,12 +34,8 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
-import androidx.compose.ui.unit.sp
-import app.orchard.tv.R
 import app.orchard.tv.system.NetKind
 import app.orchard.tv.system.NetworkStatus
 import app.orchard.tv.ui.components.Pressable
@@ -51,34 +47,30 @@ import app.orchard.tv.ui.theme.Type
 import app.orchard.tv.weather.Weather
 import app.orchard.tv.weather.WeatherKind
 import app.orchard.tv.weather.WeatherNow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.roundToInt
 
-/** The current time, ticking on the minute (or every second in the tvhome layout). */
+/** The current time, ticking on the minute. */
 @Composable
-fun rememberNow(everySecond: Boolean = false): State<LocalDateTime> = produceState(LocalDateTime.now(), everySecond) {
-    val step = if (everySecond) 1_000L else 60_000L
+fun rememberNow(): State<LocalDateTime> = produceState(LocalDateTime.now()) {
     while (true) {
         value = LocalDateTime.now()
-        delay(step - System.currentTimeMillis() % step + 30L)
+        delay(60_000L - System.currentTimeMillis() % 60_000L + 30L)
     }
 }
 
 @Composable
-fun timeText(now: LocalDateTime, seconds: Boolean = false): String {
+fun timeText(now: LocalDateTime): String {
     val context = LocalContext.current
     // 24-hour unless the owner chose 12-hour. With the setting unset, Android falls back to the
     // locale, and zh_CN means 12-hour, which TV clocks here never show (TCL 65S515D, issue #15).
     val twelve = runCatching { android.provider.Settings.System.getString(context.contentResolver, android.provider.Settings.System.TIME_12_24) }.getOrNull() == "12"
-    val pattern = when {
-        twelve && seconds -> "h:mm:ss"
-        twelve -> "h:mm"
-        seconds -> "H:mm:ss"
-        else -> "H:mm"
-    }
+    val pattern = if (twelve) "h:mm" else "H:mm"
     return now.format(DateTimeFormatter.ofPattern(pattern))
 }
 
@@ -108,10 +100,13 @@ fun HomeBackground(
     scroll: () -> Float,
     collapse: Float,
     alpha: Float = 1f,
+    // The tvhome layout bakes a new backdrop per focused app and switches between two already
+    // dark washes, where a crossfade would mean two full-screen draws on every navigation frame.
+    crossfadeMs: Int = 450,
 ) {
     Crossfade(
         targetState = backdrop to frosted,
-        animationSpec = tween(450, easing = Motion.EaseOut),
+        animationSpec = tween(crossfadeMs, easing = Motion.EaseOut),
         modifier = Modifier.fillMaxSize(),
         label = "ambient",
     ) { (bmp, frost) ->
@@ -146,28 +141,48 @@ private fun darkened(src: ImageBitmap, alpha: Float): ImageBitmap {
     return out.asImageBitmap()
 }
 
+// Baked dock backdrops, keyed per app. Caching keeps navigation from re-baking and re-uploading
+// a texture on every focus change: a repeated visit shows the finished picture on its first frame.
+private val dockBakes = android.util.LruCache<String, ImageBitmap>(5)
+
 /**
- * The tvhome layout's backdrop, baked once per focused app: the app's own blurred artwork over
- * black, its tint glowing from behind the dock, and a shade that keeps the clock and the bar
- * legible. Baked so Home still costs one full-screen draw per frame on a TV GPU.
+ * The tvhome layout's backdrop, baked once per focused app: the owner's wallpaper, or the app's
+ * own ambient light, over black, the app's tint glowing from behind the dock, and a shade that
+ * keeps the title and the bar legible. Until a first bake lands, the app's 64×36 ambient light
+ * stands in. Baked off the main thread, capped at 720p — a dark ambient wash the canvas
+ * stretches — so Home still costs one full-screen draw per frame on a TV GPU.
  */
 @Composable
-fun rememberDockBackdrop(art: app.orchard.tv.apps.TileArt?, photo: ImageBitmap?): ImageBitmap? = remember(art, photo) {
-    if (art == null && photo == null) return@remember null
-    val w = 960
-    val h = 540
-    val out = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
-    val canvas = android.graphics.Canvas(out)
-    canvas.drawColor(android.graphics.Color.BLACK)
+fun rememberDockBackdrop(appId: String?, art: app.orchard.tv.apps.TileArt?, photo: ImageBitmap?, canvas: IntSize): ImageBitmap? {
+    val scale = minOf(canvas.width / 960f, canvas.height / 540f, 4f / 3f)
+    val w = (960 * scale).roundToInt()
+    val h = (540 * scale).roundToInt()
+    val cacheKey = "$appId/${System.identityHashCode(photo)}/$w"
+    return produceState(initialValue = dockBakes.get(cacheKey) ?: art?.backdrop ?: photo, cacheKey) {
+        if (dockBakes.get(cacheKey) != null) return@produceState
+        withContext(Dispatchers.Default) {
+            bakeDockBackdrop(art, photo, w, h)?.let { baked ->
+                dockBakes.put(cacheKey, baked)
+                value = baked
+            }
+        }
+    }.value
+}
 
-    // The owner's wallpaper, if there is one: a dark photograph reads far more like tvOS than a
-    // wash of the app's colour. Otherwise the focused app's own artwork.
+private fun bakeDockBackdrop(art: app.orchard.tv.apps.TileArt?, photo: ImageBitmap?, w: Int, h: Int): ImageBitmap? {
+    if (art == null && photo == null) return null
+    val out = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas2d = android.graphics.Canvas(out)
+    canvas2d.drawColor(android.graphics.Color.BLACK)
+
+    // The owner's wallpaper, if there is one: a photograph reads far more like tvOS than a wash
+    // of the app's colour. Otherwise the focused app's own artwork.
     val source = photo ?: art?.backdrop
     if (source != null) {
         val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG).apply {
             alpha = if (photo != null) 200 else 165
         }
-        canvas.drawBitmap(source.asAndroidBitmap(), null, android.graphics.Rect(0, 0, w, h), paint)
+        canvas2d.drawBitmap(source.asAndroidBitmap(), null, android.graphics.Rect(0, 0, w, h), paint)
     }
 
     art?.let {
@@ -180,7 +195,7 @@ fun rememberDockBackdrop(art: app.orchard.tv.apps.TileArt?, photo: ImageBitmap?)
                 android.graphics.Shader.TileMode.CLAMP,
             )
         }
-        canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), glow)
+        canvas2d.drawRect(0f, 0f, w.toFloat(), h.toFloat(), glow)
     }
 
     val shade = android.graphics.Paint().apply {
@@ -196,8 +211,8 @@ fun rememberDockBackdrop(art: app.orchard.tv.apps.TileArt?, photo: ImageBitmap?)
             android.graphics.Shader.TileMode.CLAMP,
         )
     }
-    canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), shade)
-    out.asImageBitmap()
+    canvas2d.drawRect(0f, 0f, w.toFloat(), h.toFloat(), shade)
+    return out.asImageBitmap()
 }
 
 /**
@@ -221,42 +236,6 @@ fun ShelfClock(now: LocalDateTime, modifier: Modifier = Modifier, alignEnd: Bool
 }
 
 /**
- * tvhome-zh's clock, ported for AerialSettings.dockHome: a greeting over a thin clock that counts
- * seconds, with the date beside it. Same top-left corner as ShelfClock, so the rest of Home lines
- * up with the standard layout.
- */
-@Composable
-fun TvHomeClock(now: LocalDateTime, modifier: Modifier = Modifier, alignEnd: Boolean = false) {
-    val dim = Color.White.copy(alpha = 0.86f)
-    val quiet = Color.White.copy(alpha = 0.62f)
-    val greeting = when (now.hour) {
-        in 5..10 -> R.string.greeting_morning
-        in 11..13 -> R.string.greeting_noon
-        in 14..17 -> R.string.greeting_afternoon
-        in 18..22 -> R.string.greeting_evening
-        else -> R.string.greeting_night
-    }
-    Column(modifier, horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start) {
-        BasicText(
-            stringResource(greeting),
-            style = Type.Callout.copy(color = quiet, letterSpacing = 0.18.em),
-            modifier = Modifier.padding(bottom = 6.dp),
-        )
-        Row(verticalAlignment = Alignment.Bottom) {
-            BasicText(
-                timeText(now, seconds = true),
-                style = Type.Clock.copy(fontSize = 96.sp, lineHeight = 96.sp),
-            )
-            BasicText(
-                dateText(now),
-                style = Type.Headline.copy(color = dim),
-                modifier = Modifier.padding(start = 20.dp, bottom = 10.dp),
-            )
-        }
-    }
-}
-
-/**
  * One-row Home: the time and the weather in one quiet line in the top left, level with the status
  * pill, so the wallpaper keeps the rest of the screen. A soft shadow keeps it readable on photos.
  */@Composable
@@ -273,7 +252,7 @@ fun CornerClock(now: LocalDateTime, modifier: Modifier = Modifier) {
     }
 }
 
-private fun glyphFor(w: WeatherNow): Glyph = when (w.kind) {
+internal fun glyphFor(w: WeatherNow): Glyph = when (w.kind) {
     WeatherKind.Clear -> if (w.day) Glyph.Sun else Glyph.Moon
     WeatherKind.PartlyCloudy -> if (w.day) Glyph.CloudSun else Glyph.Cloud
     WeatherKind.Cloudy -> Glyph.Cloud

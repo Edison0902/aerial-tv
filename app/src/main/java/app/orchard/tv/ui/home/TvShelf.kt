@@ -1,12 +1,17 @@
 package app.orchard.tv.ui.home
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateIntOffsetAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,34 +24,52 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import app.orchard.tv.apps.AppEntry
-import app.orchard.tv.ui.theme.Motion
-import app.orchard.tv.ui.theme.Palette
+import app.orchard.tv.ui.theme.GlyphIcon
 import app.orchard.tv.ui.theme.Type
+import app.orchard.tv.weather.Weather
+import java.time.LocalDateTime
 import kotlin.math.roundToInt
+
+// One large row of apps; the bar below hugs its four smaller tiles, centred, so it never reads
+// as an empty slab.
+private val RowTile = 200.dp
+private val RowGap = 26.dp
+private val DockTile = 148.dp
+private val DockGap = 22.dp
+
+/** The weather's condition in words, beside the temperature under the title. */
+internal fun conditionFor(kind: app.orchard.tv.weather.WeatherKind): Int = when (kind) {
+    app.orchard.tv.weather.WeatherKind.Clear -> app.orchard.tv.R.string.w_clear
+    app.orchard.tv.weather.WeatherKind.PartlyCloudy -> app.orchard.tv.R.string.w_partly
+    app.orchard.tv.weather.WeatherKind.Cloudy -> app.orchard.tv.R.string.w_cloudy
+    app.orchard.tv.weather.WeatherKind.Fog -> app.orchard.tv.R.string.w_fog
+    app.orchard.tv.weather.WeatherKind.Rain -> app.orchard.tv.R.string.w_rain
+    app.orchard.tv.weather.WeatherKind.Snow -> app.orchard.tv.R.string.w_snow
+    app.orchard.tv.weather.WeatherKind.Thunder -> app.orchard.tv.R.string.w_thunder
+}
 
 /**
  * The Apple TV home shape: one horizontal row of apps that scrolls sideways, and a fixed bar of
  * four favourites underneath. Moving left/right walks the row and the row follows; moving down
  * drops into the bar, up comes back. Nothing is stacked vertically, so nothing can hide behind
- * the bar.
+ * the bar. The focused app's name, with the date and weather, owns the top of the screen.
  */
 @Composable
 fun TvShelfHome(
@@ -55,6 +78,8 @@ fun TvShelfHome(
     focusedKey: String?,
     dockFocusedKey: String?,
     title: String?,
+    now: LocalDateTime,
+    reset: Int = 0,
     requester: (String) -> FocusRequester,
     enabled: Boolean,
     movingKey: String?,
@@ -63,56 +88,101 @@ fun TvShelfHome(
     onAppLongPress: (AppEntry, Rect?) -> Unit,
     onDockFocused: (AppEntry) -> Unit,
     onDockLaunch: (AppEntry, Rect?) -> Unit,
+    onDockLongPress: (AppEntry, Rect?) -> Unit,
 ) {
     val focusedIndex = apps.indexOfFirst { it.key == focusedKey }
-    val density = androidx.compose.ui.platform.LocalDensity.current
+    val density = LocalDensity.current
+    val quiet = Shadow(Color.Black.copy(alpha = 0.5f), blurRadius = 8f)
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val margin = 56.dp
-        val gap = 22.dp
-        val tileW = 140.dp
-        val tileH = tileW * 9f / 16f
-        val pitch = tileW + gap
-        val rowY = maxHeight * 0.42f
+        val tileH = RowTile * 9f / 16f
+        val pitch = RowTile + RowGap
+        val rowY = maxHeight * 0.40f
 
-        // The focused app's name, large, in the empty upper half — the way tvOS lets the
-        // selected app own the screen instead of showing a clock.
-        androidx.compose.animation.Crossfade(
-            targetState = title,
-            animationSpec = androidx.compose.animation.core.tween(260),
-            label = "shelf-title",
-        ) { label ->
-            BasicText(
-                text = label ?: "",
-                style = Type.Clock.copy(
-                    fontSize = 46.sp,
-                    lineHeight = 50.sp,
-                    letterSpacing = (-0.02).em,
-                    shadow = Shadow(Color.Black.copy(alpha = 0.45f), blurRadius = 16f),
-                ),
-                modifier = Modifier.padding(start = margin, top = 48.dp),
-            )
+        // The focused app's name, large, in the empty upper half — the way tvOS lets the selected
+        // app own the screen instead of showing a clock. Date and weather sit under it.
+        Column(Modifier.padding(start = margin, top = 42.dp)) {
+            Crossfade(
+                targetState = title,
+                animationSpec = tween(260),
+                label = "shelf-title",
+            ) { label ->
+                BasicText(
+                    text = label ?: "",
+                    style = Type.Clock.copy(
+                        fontSize = 46.sp,
+                        lineHeight = 50.sp,
+                        letterSpacing = (-0.02).em,
+                        shadow = Shadow(Color.Black.copy(alpha = 0.45f), blurRadius = 16f),
+                    ),
+                )
+            }
+            val dim = Color.White.copy(alpha = 0.82f)
+            Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                BasicText(
+                    dateText(now),
+                    style = Type.Title.copy(color = dim, shadow = quiet),
+                )
+                Weather.now?.let { w ->
+                    // The weather in a small glass bubble, apart from the date.
+                    Row(
+                        Modifier
+                            .padding(start = 14.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color.White.copy(alpha = 0.14f), Color.White.copy(alpha = 0.05f)),
+                                ),
+                            )
+                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
+                            .padding(horizontal = 16.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(9.dp),
+                    ) {
+                        GlyphIcon(glyphFor(w), Color.White, 21.dp)
+                        BasicText(
+                            stringResource(conditionFor(w.kind)) + " ${w.celsius}°",
+                            style = Type.Title.copy(color = Color.White, shadow = quiet),
+                        )
+                        Weather.place?.takeIf { it.length <= 12 }?.let {
+                            BasicText(
+                                it,
+                                style = Type.Callout.copy(color = Color.White.copy(alpha = 0.75f)),
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         // The row follows focus, the way tvOS keeps the selected icon in view: it only moves when
-        // the selected app would leave the edges, instead of re-centring on every step.
+        // the selected app would leave the edges, instead of re-centring on every step. With the
+        // focus elsewhere (the bar, or nothing yet) the row rests where it is.
         val scroll = remember { Animatable(0f) }
-        val maxScroll = ((pitch * apps.size - gap) + margin * 2 - maxWidth)
+        val maxScroll = ((pitch * apps.size - RowGap) + margin * 2 - maxWidth)
             .coerceAtLeast(0.dp)
-        val current = scroll.value.dp
-        val tileLeft = margin + pitch * focusedIndex.coerceAtLeast(0)
         val desired = when {
-            focusedIndex < 0 -> current
-            tileLeft - current < margin -> tileLeft - margin
-            tileLeft + tileW - current > maxWidth - margin -> tileLeft + tileW - (maxWidth - margin)
-            else -> current
-        }.coerceIn(0.dp, maxScroll)
-        LaunchedEffect(desired) {
+            focusedIndex < 0 -> null
+            else -> {
+                val tileLeft = margin + pitch * focusedIndex
+                when {
+                    tileLeft - scroll.value.dp < margin -> tileLeft - margin
+                    tileLeft + RowTile - scroll.value.dp > maxWidth - margin -> tileLeft + RowTile - (maxWidth - margin)
+                    else -> scroll.value.dp
+                }.coerceIn(0.dp, maxScroll)
+            }
+        }
+        if (desired != null) LaunchedEffect(desired) {
             scroll.animateTo(desired.value, spring(dampingRatio = 1f, stiffness = 190f))
+        }
+        // Coming back to Home, the row presents its first apps again.
+        LaunchedEffect(reset) {
+            if (reset > 0) scroll.animateTo(0f, spring(dampingRatio = 1f, stiffness = 190f))
         }
 
         // Row, clipped so apps scroll in and out from the edges.
-        Box(
+        if (apps.isNotEmpty()) Box(
             Modifier
                 .fillMaxWidth()
                 .height(rowY + tileH + 54.dp)
@@ -126,12 +196,12 @@ fun TvShelfHome(
                     // Re-ordering animates: a moved app slides to its slot instead of jumping.
                     val slot by animateIntOffsetAsState(
                         base,
-                        spring(dampingRatio = 0.86f, stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow),
+                        spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow),
                         label = "shelf-slot",
                     )
                     AppTile(
                         app = app,
-                        width = tileW,
+                        width = RowTile,
                         height = tileH,
                         focusRequester = requester(app.key),
                         enabled = enabled,
@@ -149,47 +219,42 @@ fun TvShelfHome(
             }
         }
 
-        // The favourites bar, always in the same place.
-        val dockTileW = 150.dp
-        val dockTileH = dockTileW * 9f / 16f
-        Box(
+        // The favourites bar, always in the same place. Only the glass is clipped; the tiles sit
+        // above it, so a focused one can lift and show its ring past the bar's edge.
+        if (dockApps.isNotEmpty()) Box(
             Modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(dockTileH + 44.dp),
+                .padding(bottom = 22.dp),
         ) {
-            val inset = 28.dp
-            val top = 8.dp
             Box(
                 Modifier
-                    .padding(horizontal = inset)
-                    .padding(top = top, bottom = 10.dp)
-                    .fillMaxSize()
-                    .clip(RoundedCornerShape(28.dp))
+                    .matchParentSize()
+                    .padding(horizontal = 14.dp)
+                    .clip(RoundedCornerShape(26.dp))
                     .background(
                         Brush.verticalGradient(
-                            listOf(Color.White.copy(alpha = 0.115f), Color.White.copy(alpha = 0.045f)),
+                            listOf(Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.035f)),
                         ),
                     )
-                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(28.dp)),
+                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(26.dp)),
             )
             Row(
-                Modifier.align(Alignment.Center).padding(horizontal = margin),
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(20.dp),
+                Modifier.padding(horizontal = 26.dp).padding(top = 12.dp, bottom = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(DockGap),
             ) {
                 dockApps.forEach { app ->
                     key("dock-" + app.key) {
                         AppTile(
                             app = app,
-                            width = dockTileW,
-                            height = dockTileH,
+                            width = DockTile,
+                            height = DockTile * 9f / 16f,
                             focusRequester = requester("dock:" + app.key),
                             enabled = enabled,
-                            moving = false,
+                            moving = movingKey == app.key,
                             appearDelayMs = 0,
                             onFocused = { onDockFocused(app) },
                             onClick = { b -> onDockLaunch(app, b) },
-                            onLongPress = { },
+                            onLongPress = { b -> onDockLongPress(app, b) },
                             labels = false,
                             modifier = Modifier,
                         )

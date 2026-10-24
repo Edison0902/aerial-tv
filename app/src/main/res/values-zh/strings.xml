@@ -4,10 +4,8 @@
     <string name="guard_description">在不允许更换桌面的电视上，让 Aerial 保持为主屏幕。不会读取任何屏幕内容。</string>
 
     <string name="greeting_morning">早上好</string>
-    <string name="greeting_noon">午安</string>
     <string name="greeting_afternoon">下午好</string>
     <string name="greeting_evening">晚上好</string>
-    <string name="greeting_night">晚安</string>
 
     <string name="cc_title">控制中心</string>
     <string name="cc_inputs">信号源</string>
@@ -87,12 +85,19 @@
     <string name="st_style">风格</string>
     <string name="st_style_standard">标准</string>
     <string name="st_style_dock">桌面栏</string>
-    <string name="st_style_hint">桌面栏：底部固定 4 个 App，4 列网格、纯黑背景，时钟带秒。</string>
+    <string name="st_style_hint">桌面栏：最前面的 4 个 App 固定在底部一栏，其余排成上面一排大磁贴，时间在右上角。</string>
     <string name="st_clock">时钟</string>
     <string name="st_clock_left">左上</string>
     <string name="st_clock_right">右上</string>
     <string name="st_clock_hint">时钟、日期和天气显示的位置。只显示一排时，只在这个角上留一行小字的时间和天气。</string>
     <string name="st_names_hint">每个 App 下面都显示名称，或者像 Apple TV 一样只显示选中的。</string>
+    <string name="w_clear">晴</string>
+    <string name="w_partly">多云</string>
+    <string name="w_cloudy">阴</string>
+    <string name="w_fog">雾</string>
+    <string name="w_rain">雨</string>
+    <string name="w_snow">雪</string>
+    <string name="w_thunder">雷雨</string>
     <string name="ss_kind">类型</string>
     <string name="wp_weather_city">位置</string>
     <string name="st_home_standard">标准</string>
