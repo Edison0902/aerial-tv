@@ -217,15 +217,23 @@ class HomeGuardService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     /**
-     * Filters keys only while the viewer is in the stock launcher on purpose; see the class comment.
+     * Filters keys while the viewer is in the stock launcher on purpose; see the class comment.
      * Up to Android 11 always: there, once Home reaches the system, it holds every background
      * activity start for five seconds, so Aerial came back only after five seconds of the TCL
      * launcher (TCL MT5879, since 1.11 stopped filtering by default).
+     *
+     * Also on firmwares that resolve Home to their own launcher whatever the roles and
+     * preferences say (Xiaomi MiTV-MFTR0, Android 14: every Home press started PatchWall and the
+     * guard could only pull Aerial back over it, half a second of flash). The flag is requested
+     * there too — the capability and role are in place — but that firmware never delivers keys
+     * to [onKeyEvent] at all, so the flash remains on it; other Android 12+ firmwares do
+     * deliver keys, and there this removes the flash.
      */
     private fun filterKeys(on: Boolean) {
         val info = serviceInfo ?: return
         val flag = AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
-        val want = if (!keysPassThrough && (on || Build.VERSION.SDK_INT <= Build.VERSION_CODES.R)) info.flags or flag else info.flags and flag.inv()
+        val want = if (!keysPassThrough && (firmwareTakesHome || on || Build.VERSION.SDK_INT <= Build.VERSION_CODES.R))
+            info.flags or flag else info.flags and flag.inv()
         if (want == info.flags) return
         info.flags = want
         serviceInfo = info
@@ -242,8 +250,16 @@ class HomeGuardService : AccessibilityService() {
         VIDAA_PACKAGES.any { runCatching { packageManager.getPackageInfo(it, 0) }.isSuccess }
     }
 
+    /** Whether the firmware resolves Home to a launcher other than Aerial (Xiaomi MiTV-MFTR0 does:
+     * the role and the preferred activity both say Aerial, and the dispatch still went to
+     * PatchWall), so HOME keys are taken before the system ever sees them. */
+    @Volatile
+    private var firmwareTakesHome = false
+
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (!GuardSetup.isUserUnlocked(this)) return false
+        if (event.keyCode != KeyEvent.KEYCODE_HOME) return false
+        if (isDefaultHome()) return false
         if (event.keyCode != KeyEvent.KEYCODE_HOME) return false
         if (isDefaultHome()) return false
         if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) {
@@ -311,6 +327,7 @@ class HomeGuardService : AccessibilityService() {
             .filter { it.activityInfo.packageName != packageName && it.priority >= 0 }
             .groupBy({ it.activityInfo.packageName }, { it.activityInfo.name })
             .mapValues { it.value.toSet() }
+        firmwareTakesHome = !isDefaultHome()
     }
 
     /**
