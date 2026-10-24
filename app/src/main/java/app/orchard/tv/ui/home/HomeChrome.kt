@@ -52,6 +52,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.nio.ByteBuffer
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -175,23 +176,41 @@ private fun bakeDockBackdrop(art: app.orchard.tv.apps.TileArt?, photo: ImageBitm
     val canvas2d = android.graphics.Canvas(out)
     canvas2d.drawColor(android.graphics.Color.BLACK)
 
-    // The owner's wallpaper, if there is one: a photograph reads far more like tvOS than a wash
-    // of the app's colour. Otherwise the focused app's own artwork.
-    val source = photo ?: art?.backdrop
-    if (source != null) {
-        val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG).apply {
-            alpha = if (photo != null) 200 else 165
+    val tint = (art?.tint ?: Color(0xFF3A6EA5)).toArgb()
+
+    // With no wallpaper the backdrop is composed, not stretched artwork: a deep base with a wide
+    // sweep of the app's tint from the upper left and a soft light over the title, which reads
+    // cleaner than the app's 64×36 ambient light blown up (that washed out into mud).
+    if (photo == null) {
+        val sweep = android.graphics.Paint().apply {
+            shader = android.graphics.LinearGradient(
+                0f, 0f, w * 0.9f, h * 0.75f,
+                intArrayOf(tint and 0x00FFFFFF or (android.graphics.Color.alpha(tint).coerceIn(60, 110) shl 24), 0x00000000),
+                floatArrayOf(0f, 1f),
+                android.graphics.Shader.TileMode.CLAMP,
+            )
         }
-        canvas2d.drawBitmap(source.asAndroidBitmap(), null, android.graphics.Rect(0, 0, w, h), paint)
+        canvas2d.drawRect(0f, 0f, w.toFloat(), h.toFloat(), sweep)
+        val base = android.graphics.Paint().apply {
+            shader = android.graphics.RadialGradient(
+                w * 0.22f, h * 0.12f, w * 0.55f,
+                intArrayOf(0x33FFFFFF, 0x00000000), floatArrayOf(0f, 1f),
+                android.graphics.Shader.TileMode.CLAMP,
+            )
+        }
+        canvas2d.drawRect(0f, 0f, w.toFloat(), h.toFloat(), base)
+    } else {
+        val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG).apply { alpha = 200 }
+        canvas2d.drawBitmap(photo.asAndroidBitmap(), null, android.graphics.Rect(0, 0, w, h), paint)
     }
 
+    // The tint glowing from behind the dock bar, and a shade keeping the title and tiles legible.
     art?.let {
-        val tint = it.tint.copy(alpha = 0.20f).toArgb()
         val clear = it.tint.copy(alpha = 0f).toArgb()
         val glow = android.graphics.Paint().apply {
             shader = android.graphics.RadialGradient(
                 w * 0.5f, h * 0.86f, w * 0.72f,
-                intArrayOf(tint, clear), floatArrayOf(0f, 1f),
+                intArrayOf(it.tint.copy(alpha = 0.22f).toArgb(), clear), floatArrayOf(0f, 1f),
                 android.graphics.Shader.TileMode.CLAMP,
             )
         }
@@ -202,17 +221,38 @@ private fun bakeDockBackdrop(art: app.orchard.tv.apps.TileArt?, photo: ImageBitm
         shader = android.graphics.LinearGradient(
             0f, 0f, 0f, h.toFloat(),
             intArrayOf(
-                android.graphics.Color.argb(160, 0, 0, 0),
+                android.graphics.Color.argb(150, 0, 0, 0),
                 android.graphics.Color.argb(20, 0, 0, 0),
                 android.graphics.Color.argb(70, 0, 0, 0),
-                android.graphics.Color.argb(230, 0, 0, 0),
+                android.graphics.Color.argb(225, 0, 0, 0),
             ),
-            floatArrayOf(0f, 0.40f, 0.66f, 1f),
+            floatArrayOf(0f, 0.42f, 0.68f, 1f),
             android.graphics.Shader.TileMode.CLAMP,
         )
     }
     canvas2d.drawRect(0f, 0f, w.toFloat(), h.toFloat(), shade)
+    // A fine noise breaks up the gradient banding these dark washes show on big panels.
+    canvas2d.drawBitmap(ditherTile(), null, android.graphics.Rect(0, 0, w, h), DITHER_PAINT)
     return out.asImageBitmap()
+}
+
+private val DITHER_PAINT = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG).apply { alpha = 10 }
+
+private var dither: android.graphics.Bitmap? = null
+
+/** A small blue-noise-ish tile, drawn stretched over dark backdrops to hide banding. */
+@Synchronized
+private fun ditherTile(): android.graphics.Bitmap {
+    dither?.let { return it }
+    val size = 96
+    val bmp = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ALPHA_8)
+    val px = ByteBuffer.allocate(size * size)
+    val random = java.util.Random(7)
+    for (i in 0 until size * size) px.put(((random.nextInt(24) - 12) + 12).toByte())
+    px.rewind()
+    bmp.copyPixelsFromBuffer(px)
+    dither = bmp
+    return bmp
 }
 
 /**
@@ -226,7 +266,7 @@ fun ShelfClock(now: LocalDateTime, modifier: Modifier = Modifier, alignEnd: Bool
         Row(verticalAlignment = Alignment.CenterVertically) {
             BasicText(dateText(now), style = Type.Title.copy(color = dim))
             Weather.now?.let { w ->
-                GlyphIcon(glyphFor(w), dim, 22.dp, Modifier.padding(start = 18.dp, end = 6.dp))
+                GlyphIcon(glyphFor(w.kind, w.day), dim, 22.dp, Modifier.padding(start = 18.dp, end = 6.dp))
                 val place = Weather.place?.takeIf { it.length <= 12 }
                 BasicText(listOfNotNull(place, "${w.celsius}°").joinToString(" "), style = Type.Title.copy(color = dim))
             }
@@ -245,16 +285,16 @@ fun CornerClock(now: LocalDateTime, modifier: Modifier = Modifier) {
     Row(modifier.height(34.dp), verticalAlignment = Alignment.CenterVertically) {
         BasicText(timeText(now), style = Type.Title.copy(color = dim, shadow = shadow))
         Weather.now?.let { w ->
-            GlyphIcon(glyphFor(w), dim, 18.dp, Modifier.padding(start = 16.dp, end = 6.dp))
+            GlyphIcon(glyphFor(w.kind, w.day), dim, 18.dp, Modifier.padding(start = 16.dp, end = 6.dp))
             val place = Weather.place?.takeIf { it.length <= 12 }
             BasicText(listOfNotNull(place, "${w.celsius}°").joinToString(" "), style = Type.Headline.copy(color = dim, shadow = shadow))
         }
     }
 }
 
-internal fun glyphFor(w: WeatherNow): Glyph = when (w.kind) {
-    WeatherKind.Clear -> if (w.day) Glyph.Sun else Glyph.Moon
-    WeatherKind.PartlyCloudy -> if (w.day) Glyph.CloudSun else Glyph.Cloud
+internal fun glyphFor(kind: WeatherKind, day: Boolean): Glyph = when (kind) {
+    WeatherKind.Clear -> if (day) Glyph.Sun else Glyph.Moon
+    WeatherKind.PartlyCloudy -> if (day) Glyph.CloudSun else Glyph.Cloud
     WeatherKind.Cloudy -> Glyph.Cloud
     WeatherKind.Fog -> Glyph.CloudFog
     WeatherKind.Rain -> Glyph.CloudRain
@@ -308,7 +348,7 @@ fun StatusPill(
             GlyphIcon(glyph, fg, 17.dp, level = network.level)
             if (showWeather) Weather.now?.let { w ->
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    GlyphIcon(glyphFor(w), fg, 17.dp)
+                    GlyphIcon(glyphFor(w.kind, w.day), fg, 17.dp)
                     BasicText("${w.celsius}°", style = Type.Headline.copy(color = fg))
                 }
             }

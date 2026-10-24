@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import app.orchard.tv.R
 import app.orchard.tv.apps.AppEntry
 import app.orchard.tv.ui.theme.GlyphIcon
 import app.orchard.tv.ui.theme.Type
@@ -98,7 +99,7 @@ fun TvShelfHome(
         val margin = 56.dp
         val tileH = RowTile * 9f / 16f
         val pitch = RowTile + RowGap
-        val rowY = maxHeight * 0.40f
+        val rowY = maxHeight * 0.47f
 
         // The focused app's name, large, in the empty upper half — the way tvOS lets the selected
         // app own the screen instead of showing a clock. Date and weather sit under it.
@@ -140,7 +141,7 @@ fun TvShelfHome(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(9.dp),
                     ) {
-                        GlyphIcon(glyphFor(w), Color.White, 21.dp)
+                        GlyphIcon(glyphFor(w.kind, w.day), Color.White, 21.dp)
                         BasicText(
                             stringResource(conditionFor(w.kind)) + " ${w.celsius}°",
                             style = Type.Title.copy(color = Color.White, shadow = quiet),
@@ -150,6 +151,27 @@ fun TvShelfHome(
                                 it,
                                 style = Type.Callout.copy(color = Color.White.copy(alpha = 0.75f)),
                             )
+                        }
+                    }
+                }
+            }
+            // The hours ahead: a quiet strip under the date.
+            if (Weather.hourly.size >= 2) {
+                Row(
+                    Modifier.padding(top = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(30.dp),
+                ) {
+                    Weather.hourly.forEachIndexed { i, h ->
+                        val bright = i == 0
+                        val tone = Color.White.copy(alpha = if (bright) 0.92f else 0.62f)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            BasicText(
+                                if (bright) stringResource(R.string.w_now) else "${h.hour}" + stringResource(R.string.w_hour),
+                                style = Type.Caption.copy(color = tone),
+                            )
+                            GlyphIcon(glyphFor(h.kind, h.day), tone, 17.dp, Modifier.padding(top = 5.dp, bottom = 3.dp))
+                            BasicText("${h.celsius}°", style = Type.Headline.copy(color = if (bright) Color.White else tone))
                         }
                     }
                 }

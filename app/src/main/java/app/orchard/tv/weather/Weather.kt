@@ -24,6 +24,9 @@ enum class WeatherKind { Clear, PartlyCloudy, Cloudy, Fog, Rain, Snow, Thunder }
 
 data class WeatherNow(val celsius: Int, val kind: WeatherKind, val day: Boolean)
 
+/** One hour of the forecast strip under the home title. [hour] is the hour of day. */
+data class WeatherHour(val hour: Int, val celsius: Int, val kind: WeatherKind, val day: Boolean)
+
 /**
  * The weather beside the home clock, from Open-Meteo: no key, reachable from China. The place is
  * the one the owner names on the phone page, or else a guess from the network's public address.
@@ -42,6 +45,9 @@ object Weather {
     private const val STALE_MS = 3 * 60 * 60 * 1000L
 
     var now by mutableStateOf<WeatherNow?>(null); private set
+
+    /** The next hours of the forecast, the strip under the home title. */
+    var hourly by mutableStateOf<List<WeatherHour>>(emptyList()); private set
 
     /** Where the weather is for, as a name to show; null until known. */
     var place by mutableStateOf<String?>(null); private set
@@ -64,6 +70,7 @@ object Weather {
         if (System.currentTimeMillis() - prefs.getLong("fetched_at", 0) < STALE_MS) {
             val kind = runCatching { WeatherKind.valueOf(prefs.getString("kind", null) ?: "") }.getOrNull()
             if (kind != null) now = WeatherNow(prefs.getInt("celsius", 0), kind, prefs.getBoolean("day", true))
+            hourly = runCatching { readHourly(prefs.getString("hourly", null) ?: "[]") }.getOrDefault(emptyList())
         }
     }
 
@@ -81,19 +88,21 @@ object Weather {
             }
             prefs.getString("place", null)?.let { place = it }
             if (reading != null) {
-                now = reading
+                now = reading.first
+                hourly = reading.second
                 prefs.edit {
                     putLong("fetched_at", System.currentTimeMillis())
-                    putInt("celsius", reading.celsius)
-                    putString("kind", reading.kind.name)
-                    putBoolean("day", reading.day)
+                    putInt("celsius", reading.first.celsius)
+                    putString("kind", reading.first.kind.name)
+                    putBoolean("day", reading.first.day)
+                    putString("hourly", writeHourly(reading.second))
                 }
             }
         }
     }
 
     /** Off the main thread. */
-    private fun fetch(): WeatherNow {
+    private fun fetch(): Pair<WeatherNow, List<WeatherHour>> {
         var lat = prefs.getFloat("lat", Float.NaN)
         var lon = prefs.getFloat("lon", Float.NaN)
         val guessedLongAgo = System.currentTimeMillis() - prefs.getLong("located_at", 0) > RELOCATE_MS
@@ -109,13 +118,50 @@ object Weather {
                 putLong("located_at", System.currentTimeMillis())
             }
         }
-        val json = JSONObject(get("https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code,is_day&timezone=auto"))
+        val json = JSONObject(get("https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
+            "&current=temperature_2m,weather_code,is_day&hourly=temperature_2m,weather_code,is_day" +
+            "&forecast_days=2&timezone=auto"))
         val current = json.getJSONObject("current")
-        return WeatherNow(
+        val now = WeatherNow(
             celsius = current.getDouble("temperature_2m").roundToInt(),
             kind = kindOf(current.getInt("weather_code")),
             day = current.optInt("is_day", 1) == 1,
         )
+        return now to parseHourly(json.getJSONObject("hourly"))
+    }
+
+    /** The next hours from the hourly arrays, starting at the current one. */
+    private fun parseHourly(hourly: JSONObject): List<WeatherHour> {
+        val times = hourly.getJSONArray("time")
+        val temps = hourly.getJSONArray("temperature_2m")
+        val codes = hourly.getJSONArray("weather_code")
+        val days = hourly.getJSONArray("is_day")
+        val thisHour = java.time.LocalDateTime.now().withMinute(0).withSecond(0)
+        val out = mutableListOf<WeatherHour>()
+        for (i in 0 until times.length()) {
+            val t = runCatching { java.time.LocalDateTime.parse(times.getString(i)) }.getOrNull() ?: continue
+            if (t.isBefore(thisHour)) continue
+            out.add(WeatherHour(
+                hour = t.hour,
+                celsius = temps.getDouble(i).roundToInt(),
+                kind = kindOf(codes.getInt(i)),
+                day = days.optInt(i, 1) == 1,
+            ))
+            if (out.size == 8) break
+        }
+        return out
+    }
+
+    private fun writeHourly(list: List<WeatherHour>): String = org.json.JSONArray().apply {
+        list.forEach { h -> put(org.json.JSONArray().apply { put(h.hour); put(h.celsius); put(h.kind.name); put(if (h.day) 1 else 0) }) }
+    }.toString()
+
+    private fun readHourly(json: String): List<WeatherHour> {
+        val arr = org.json.JSONArray(json)
+        return (0 until arr.length()).map { i ->
+            val h = arr.getJSONArray(i)
+            WeatherHour(h.getInt(0), h.getInt(1), WeatherKind.valueOf(h.getString(2)), h.optInt(3, 1) == 1)
+        }
     }
 
     /**
