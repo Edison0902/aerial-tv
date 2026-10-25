@@ -113,6 +113,7 @@ fun TvShelfHome(
         ) {
             val dim = Color.White.copy(alpha = 0.85f)
             val soft = Color.White.copy(alpha = 0.62f)
+            BasicText(timeText(now), style = Type.Title.copy(color = dim, shadow = quiet))
             BasicText(dateText(now), style = Type.Title.copy(color = dim, shadow = quiet))
             Weather.now?.let { w ->
                 GlyphIcon(glyphFor(w.kind, w.day), dim, 17.dp)
@@ -124,7 +125,7 @@ fun TvShelfHome(
             Weather.place?.takeIf { it.length <= 12 }?.let {
                 BasicText(it, style = Type.Callout.copy(color = soft))
             }
-            Weather.hourly.drop(1).take(5).forEach { h ->
+            Weather.hourly.drop(1).take(4).forEach { h ->
                 BasicText(
                     "${h.hour}" + stringResource(R.string.w_hour) + " ${h.celsius}°",
                     style = Type.Callout.copy(color = soft),
@@ -242,22 +243,6 @@ fun TvShelfHome(
                     }
                 }
             }
-            }
-            Crossfade(
-                targetState = title,
-                animationSpec = tween(260),
-                label = "shelf-title",
-                modifier = Modifier.padding(top = 18.dp),
-            ) { label ->
-                BasicText(
-                    text = label ?: "",
-                    style = Type.Clock.copy(
-                        fontSize = 34.sp,
-                        lineHeight = 38.sp,
-                        letterSpacing = (-0.015).em,
-                        shadow = Shadow(Color.Black.copy(alpha = 0.55f), blurRadius = 12f),
-                    ),
-                )
             }
         }
     }

@@ -483,7 +483,7 @@ fun HomeScreen(
         StatusPill(
             now = now,
             network = vm.network,
-            showTime = inPill || dockHome || (if (dragged) pastShelf else focusedRow > 0),
+            showTime = inPill || (if (dragged) pastShelf else focusedRow > 0),
             showWeather = inPill,
             enabled = gridEnabled && moving == null,
             focusRequester = pillRequester,
