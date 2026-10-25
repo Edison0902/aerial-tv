@@ -1,6 +1,7 @@
 package app.orchard.tv.guard
 
 import android.Manifest
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
@@ -11,6 +12,8 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.os.UserManager
 import android.provider.Settings
+import android.view.accessibility.AccessibilityManager
+import java.lang.reflect.Method
 import androidx.core.content.ContextCompat
 import android.util.Log
 import app.orchard.tv.dream.AerialDream
@@ -22,6 +25,9 @@ import app.orchard.tv.dream.AerialDream
  * force-stopped, and Xiaomi's firmware force-stops every third-party app when the TV goes to
  * standby. With WRITE_SECURE_SETTINGS (a development permission tools/install.sh grants over ADB;
  * it cannot be granted any other way) Aerial can put the service back each time it starts.
+ *
+ * Firmwares that refuse the write altogether (JmGO K921, Android 9) get the guard bound through
+ * the accessibility shortcut instead; see [enableThroughShortcut].
  */
 object GuardSetup {
     private const val TAG = "AerialGuard"
@@ -39,6 +45,10 @@ object GuardSetup {
     private const val KEY_KEEP_ADB = "keep_adb"
     private const val KEY_OWN_SCREENSAVER = "own_screensaver"
     private const val KEY_HOME_IN_FRONT = "home_in_front"
+
+    /** elapsedRealtime of the last time the shortcut path was used to bind the guard. */
+    @Volatile
+    private var lastShortcutEnableAt = Long.MIN_VALUE / 2
 
     /**
      * Kept on disk while Aerial's home screen is in front, so a new process can tell how the last
@@ -173,16 +183,66 @@ object GuardSetup {
         val me = ComponentName(context, HomeGuardService::class.java).flattenToString()
         val resolver = context.contentResolver
         val current = Settings.Secure.getString(resolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
-        val entries = current.split(':').filter { it.isNotBlank() }
-        val alreadyOn = entries.any { ComponentName.unflattenFromString(it)?.flattenToString() == me }
+        // A guard bound through the shortcut below never shows up in the setting (the firmware
+        // refuses the write), so count what Android is actually running too — or every start would
+        // toggle the running guard straight back off (the shortcut is a toggle).
+        val alreadyOn = isListed(current, me) || guardBound(context, me)
         return runCatching {
             if (!alreadyOn) {
                 lastRevivedAt = SystemClock.elapsedRealtime()
-                Settings.Secure.putString(resolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, (entries + me).joinToString(":"))
+                Settings.Secure.putString(resolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, (splitEntries(current) + me).joinToString(":"))
+                // JmGO K921 (Android 9): SettingsProvider refuses every write to this key, from
+                // system_server included ("disable modify enabled_accessibility_services"), so the
+                // list above never changes and Android never binds the guard. Enable it through the
+                // accessibility shortcut, whose target the same firmware still lets us write.
+                if (!isListed(Settings.Secure.getString(resolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty(), me)) {
+                    enableThroughShortcut(context, me)
+                }
                 Log.i(TAG, "Home Guard had been switched off; turned it back on")
             }
             Settings.Secure.putInt(resolver, Settings.Secure.ACCESSIBILITY_ENABLED, 1)
             !alreadyOn
         }.onFailure { Log.w(TAG, "could not re-enable Home Guard", it) }.getOrDefault(false)
+    }
+
+    private fun splitEntries(setting: String): List<String> = setting.split(':').filter { it.isNotBlank() }
+
+    private fun isListed(setting: String, me: String): Boolean =
+        splitEntries(setting).any { ComponentName.unflattenFromString(it)?.flattenToString() == me }
+
+    /** The services Android is actually running, which is where a shortcut-enabled guard shows up. */
+    private fun guardBound(context: Context, me: String): Boolean =
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) false else runCatching {
+            context.getSystemService(AccessibilityManager::class.java)
+                ?.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+                .orEmpty().any { it.id == me }
+        }.getOrDefault(false)
+
+    /**
+     * JmGO K921 (Android 9) keeps enabled_accessibility_services for its own apps and refuses
+     * every write to it, system_server's included (SettingsProvider logs "disable modify ...").
+     * Android's accessibility shortcut enables its target service from inside system_server,
+     * past that refusal — so point the shortcut at the guard and perform it once. The shortcut
+     * toggles, and the binding lands a moment later, so bursts of calls (onStart, then the sync
+     * adapter) must not repeat it within seconds.
+     */
+    private fun enableThroughShortcut(context: Context, me: String) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
+        val elapsed = SystemClock.elapsedRealtime()
+        if (elapsed - lastShortcutEnableAt < 15_000) return
+        lastShortcutEnableAt = elapsed
+        runCatching {
+            val am = context.getSystemService(AccessibilityManager::class.java) ?: return
+            Settings.Secure.putString(context.contentResolver, "accessibility_shortcut_target_service", me)
+            // performAccessibilityShortcut is hidden, and Android 9 refuses plain reflection on it
+            // (NoSuchMethodException). Asking Class for its own getDeclaredMethod — public API —
+            // makes the lookup come from java.lang.Class, which Android 9 exempts. Fixed in Android
+            // 10, which is fine: this whole path exists for the JmGO K921, an Android 9 device.
+            val lookup = Class::class.java.getDeclaredMethod(
+                "getDeclaredMethod", String::class.java, emptyArray<Class<*>>().javaClass)
+            (lookup.invoke(am.javaClass, "performAccessibilityShortcut", emptyArray<Class<*>>()) as Method)
+                .invoke(am)
+            Log.i(TAG, "the firmware refuses writes to enabled_accessibility_services; bound the guard through the accessibility shortcut")
+        }.onFailure { Log.w(TAG, "could not enable the guard through the accessibility shortcut", it) }
     }
 }
