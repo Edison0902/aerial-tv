@@ -139,7 +139,7 @@ fun TvShelfHome(
                 }
             }
         }
-        if (Weather.hourly.size >= 3) TemperatureCurve(Weather.hourly, Modifier.padding(start = margin, top = 38.dp))
+        if (Weather.hourly.size >= 3) TemperatureCurve(Weather.hourly, Modifier.padding(start = margin, top = 26.dp))
 
         // The row follows focus, the way tvOS keeps the selected icon in view
 
@@ -263,10 +263,12 @@ fun TvShelfHome(
  */
 @Composable
 private fun TemperatureCurve(hours: List<app.orchard.tv.weather.WeatherHour>, modifier: Modifier = Modifier) {
+    // The whole curve, labels and ticks end well above the row: a focused tile lifts and rings
+    // about 17 dp past its top edge, and the curve must clear that too.
     val w = 470.dp
-    val h = 128.dp
-    val top = 30.dp
-    val bottom = 88.dp
+    val h = 88.dp
+    val top = 26.dp
+    val bottom = 60.dp
     val temps = hours.map { it.celsius }
     val tmin = temps.min()
     val tmax = temps.max()
@@ -292,23 +294,25 @@ private fun TemperatureCurve(hours: List<app.orchard.tv.weather.WeatherHour>, mo
                 drawCircle(Color.White, radius = 3.5.dp.toPx(), center = Offset(px(i).toPx(), py(temps[i]).toPx()))
             }
         }
-        val label = @Composable { i: Int, res: Int, above: Boolean ->
+        // Every label sits above its point; below the line there is nothing but the hour ticks,
+        // so the whole block stays clear of a lifted, ringed tile in the row under it.
+        val label = @Composable { i: Int, res: Int ->
             BasicText(
                 stringResource(res) + " " + temps[i] + "°",
                 style = Type.Caption.copy(color = Color.White.copy(alpha = 0.82f)),
-                modifier = Modifier.offset { IntOffset((px(i) - 30.dp).roundToPx(), (py(temps[i]) + if (above) -26.dp else 16.dp).roundToPx()) },
+                modifier = Modifier.offset { IntOffset((px(i) - 30.dp).roundToPx(), (py(temps[i]) - 24.dp).roundToPx()) },
             )
         }
-        label(0, R.string.w_now, true)
-        label(lowIdx, R.string.w_low, false)
-        if (highIdx != 0 && highIdx != hours.lastIndex) label(highIdx, R.string.w_high, true)
-        if (hours.lastIndex !in setOf(0, lowIdx)) label(hours.lastIndex, R.string.w_now, true)
+        label(0, R.string.w_now)
+        if (lowIdx != 0) label(lowIdx, R.string.w_low)
+        if (highIdx != 0 && highIdx != hours.lastIndex) label(highIdx, R.string.w_high)
+        if (hours.lastIndex !in setOf(0, lowIdx, highIdx)) label(hours.lastIndex, R.string.w_now)
         for (i in listOf(0, 6, 12, 18)) {
             hours.getOrNull(i)?.let { hh ->
                 BasicText(
                     "${hh.hour}" + stringResource(R.string.w_hour),
                     style = Type.Caption.copy(color = Color.White.copy(alpha = 0.55f)),
-                    modifier = Modifier.offset { IntOffset((px(i) - 14.dp).roundToPx(), 94.dp.roundToPx()) },
+                    modifier = Modifier.offset { IntOffset((px(i) - 14.dp).roundToPx(), 66.dp.roundToPx()) },
                 )
             }
         }
