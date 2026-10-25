@@ -176,40 +176,32 @@ private fun bakeDockBackdrop(appId: String?, art: app.orchard.tv.apps.TileArt?, 
     val canvas2d = android.graphics.Canvas(out)
     canvas2d.drawColor(android.graphics.Color.BLACK)
 
-    // With no wallpaper the backdrop is one of Aerial's own gradient presets — deep fields of
-    // light designed to read as wallpaper — chosen per app so it holds still while the focus
-    // moves but still varies. The app's own colour joins only as the glow behind the dock; a
-    // wash of the tint across the whole screen read as mud.
+    // With no wallpaper the backdrop is near-black cinema: one wide, soft, desaturated glow of
+    // the focused app's colour rising from behind the dock — a lamp under the bar — rather than
+    // a tint or a gradient across the whole screen, both of which read as murk.
     if (photo == null) {
-        val preset = app.orchard.tv.wallpaper.Gradients.presets[
-            (appId?.hashCode()?.let { if (it < 0) -it else it } ?: 0) % app.orchard.tv.wallpaper.Gradients.presets.size]
-        canvas2d.drawBitmap(
-            app.orchard.tv.wallpaper.Gradients.render(preset, w, h),
-            null, android.graphics.Rect(0, 0, w, h),
-            android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG),
-        )
-    } else {
-        val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG).apply { alpha = 200 }
-        canvas2d.drawBitmap(photo.asAndroidBitmap(), null, android.graphics.Rect(0, 0, w, h), paint)
-    }
-
-    // The tint glowing from behind the dock bar, and a shade keeping the title and tiles legible.
-    art?.let {
+        canvas2d.drawColor(android.graphics.Color.rgb(9, 11, 15))
         val hsv = FloatArray(3)
-        android.graphics.Color.colorToHSV(it.tint.toArgb(), hsv)
-        hsv[1] = hsv[1] * 0.5f
-        val clear = android.graphics.Color.HSVToColor(hsv) and 0x00FFFFFF
+        android.graphics.Color.colorToHSV((art?.tint ?: Color(0xFF4A6FA5)).toArgb(), hsv)
+        hsv[1] = hsv[1] * 0.55f
         val glow = android.graphics.Paint().apply {
             shader = android.graphics.RadialGradient(
-                w * 0.5f, h * 0.86f, w * 0.72f,
-                intArrayOf(android.graphics.Color.HSVToColor(hsv) and 0x00FFFFFF or (46 shl 24), clear),
+                w * 0.5f, h * 1.02f, w * 0.85f,
+                intArrayOf(android.graphics.Color.HSVToColor(hsv) and 0x00FFFFFF or (66 shl 24), 0x00000000),
                 floatArrayOf(0f, 1f),
                 android.graphics.Shader.TileMode.CLAMP,
             )
         }
         canvas2d.drawRect(0f, 0f, w.toFloat(), h.toFloat(), glow)
+    } else {
+        val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG).apply { alpha = 200 }
+        canvas2d.drawBitmap(photo.asAndroidBitmap(), null, android.graphics.Rect(0, 0, w, h), paint)
     }
 
+    // A shade keeping the name under the dock and the tiles legible over a photo.
+    if (photo != null) {
+
+    }
     val shade = android.graphics.Paint().apply {
         shader = android.graphics.LinearGradient(
             0f, 0f, 0f, h.toFloat(),

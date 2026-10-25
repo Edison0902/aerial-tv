@@ -99,54 +99,24 @@ fun TvShelfHome(
         val margin = 56.dp
         val tileH = RowTile * 9f / 16f
         val pitch = RowTile + RowGap
-        val rowY = maxHeight * 0.47f
+        val rowY = maxHeight * 0.40f
 
-        // The focused app's name, large, in the empty upper half — the way tvOS lets the selected
-        // app own the screen instead of showing a clock. Date and weather sit under it.
-        Column(Modifier.padding(start = margin, top = 42.dp)) {
-            Crossfade(
-                targetState = title,
-                animationSpec = tween(260),
-                label = "shelf-title",
-            ) { label ->
-                BasicText(
-                    text = label ?: "",
-                    style = Type.Clock.copy(
-                        fontSize = 46.sp,
-                        lineHeight = 50.sp,
-                        letterSpacing = (-0.02).em,
-                        shadow = Shadow(Color.Black.copy(alpha = 0.45f), blurRadius = 16f),
-                    ),
-                )
-            }
-            // The date in its own small card under the name; the weather has its card on the right.
-            val dim = Color.White.copy(alpha = 0.82f)
-            Row(
-                Modifier
-                    .padding(top = 16.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Black.copy(alpha = 0.34f), Color.Black.copy(alpha = 0.20f)),
-                        ),
-                    )
-                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(18.dp))
-                    .padding(horizontal = 18.dp, vertical = 9.dp),
-            ) {
-                BasicText(
-                    dateText(now),
-                    style = Type.Title.copy(color = dim, shadow = quiet),
-                )
-            }
-        }
+        // Nothing floats top-left: the focused app's name sits centred under the dock, the way
+        // Apple TV puts it, and the date and weather share the top-right corner with the pill.
 
-        // Right column: one weather card — the current reading over the hours ahead.
+        // Right column: the date over one weather card — the current reading and the hours ahead.
         Column(
             Modifier
                 .align(Alignment.TopEnd)
                 .padding(top = 78.dp, end = margin),
             horizontalAlignment = Alignment.End,
         ) {
+            val dim = Color.White.copy(alpha = 0.82f)
+            BasicText(
+                dateText(now),
+                style = Type.Title.copy(color = dim, shadow = quiet),
+                modifier = Modifier.padding(end = 4.dp, bottom = 12.dp),
+            )
             if (Weather.now != null && Weather.hourly.size >= 2) {
                 Column(
                     Modifier
@@ -262,13 +232,16 @@ fun TvShelfHome(
             }
         }
 
-        // The favourites bar, always in the same place. Only the glass is clipped; the tiles sit
-        // above it, so a focused one can lift and show its ring past the bar's edge.
-        if (dockApps.isNotEmpty()) Box(
+        // The favourites bar with the focused app's name centred under it, Apple TV's arrangement.
+        // Only the glass is clipped; the tiles sit above it, so a focused one can lift and show
+        // its ring past the bar's edge.
+        if (dockApps.isNotEmpty()) Column(
             Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            Box {
             Box(
                 Modifier
                     .matchParentSize()
@@ -303,6 +276,23 @@ fun TvShelfHome(
                         )
                     }
                 }
+            }
+            }
+            Crossfade(
+                targetState = title,
+                animationSpec = tween(260),
+                label = "shelf-title",
+                modifier = Modifier.padding(top = 18.dp),
+            ) { label ->
+                BasicText(
+                    text = label ?: "",
+                    style = Type.Clock.copy(
+                        fontSize = 34.sp,
+                        lineHeight = 38.sp,
+                        letterSpacing = (-0.015).em,
+                        shadow = Shadow(Color.Black.copy(alpha = 0.55f), blurRadius = 12f),
+                    ),
+                )
             }
         }
     }
