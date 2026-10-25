@@ -99,76 +99,40 @@ fun TvShelfHome(
         val margin = 56.dp
         val tileH = RowTile * 9f / 16f
         val pitch = RowTile + RowGap
-        val rowY = maxHeight * 0.34f
+        val rowY = maxHeight * 0.352f
 
         // Nothing floats top-left: the focused app's name sits centred under the dock, the way
         // Apple TV puts it, and the date and weather share the top-right corner with the pill.
 
-        // The date over one weather card, in the empty bottom-right corner beside the centred
-        // dock and its name — top-right would sit over the row as it scrolls in from the edge.
-        Column(
-            Modifier
-                .align(Alignment.BottomEnd)
-                .padding(bottom = 22.dp, end = margin - 12.dp),
-            horizontalAlignment = Alignment.End,
+        // One quiet line across the top: the date, the reading now, and the hours ahead — a card
+        // of these cannot share a side with the full-width row, whose tiles scroll in underneath.
+        Row(
+            Modifier.padding(start = margin, top = 66.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            val dim = Color.White.copy(alpha = 0.82f)
-            BasicText(
-                dateText(now),
-                style = Type.Title.copy(color = dim, shadow = quiet),
-                modifier = Modifier.padding(end = 4.dp, bottom = 12.dp),
-            )
-            if (Weather.now != null && Weather.hourly.size >= 2) {
-                Column(
-                    Modifier
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color.Black.copy(alpha = 0.36f), Color.Black.copy(alpha = 0.20f)),
-                            ),
-                        )
-                        .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(22.dp))
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    val w = Weather.now!!
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(9.dp),
-                    ) {
-                        GlyphIcon(glyphFor(w.kind, w.day), Color.White, 22.dp)
-                        BasicText(
-                            stringResource(conditionFor(w.kind)) + " ${w.celsius}°",
-                            style = Type.LargeTitle.copy(color = Color.White, shadow = quiet),
-                        )
-                        Weather.place?.takeIf { it.length <= 12 }?.let {
-                            BasicText(
-                                it,
-                                style = Type.Callout.copy(color = Color.White.copy(alpha = 0.75f)),
-                            )
-                        }
-                    }
-                    Row(
-                        Modifier.padding(top = 13.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(21.dp),
-                    ) {
-                        Weather.hourly.take(6).forEachIndexed { i, h ->
-                            val bright = i == 0
-                            val tone = Color.White.copy(alpha = if (bright) 0.92f else 0.6f)
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                BasicText(
-                                    if (bright) stringResource(R.string.w_now) else "${h.hour}" + stringResource(R.string.w_hour),
-                                    style = Type.Caption.copy(color = tone),
-                                )
-                                GlyphIcon(glyphFor(h.kind, h.day), tone, 16.dp, Modifier.padding(top = 5.dp, bottom = 3.dp))
-                                BasicText("${h.celsius}°", style = Type.Headline.copy(color = if (bright) Color.White else tone))
-                            }
-                        }
-                    }
-                }
+            val dim = Color.White.copy(alpha = 0.85f)
+            val soft = Color.White.copy(alpha = 0.62f)
+            BasicText(dateText(now), style = Type.Title.copy(color = dim, shadow = quiet))
+            Weather.now?.let { w ->
+                GlyphIcon(glyphFor(w.kind, w.day), dim, 17.dp)
+                BasicText(
+                    stringResource(conditionFor(w.kind)) + " ${w.celsius}°",
+                    style = Type.Title.copy(color = dim, shadow = quiet),
+                )
+            }
+            Weather.place?.takeIf { it.length <= 12 }?.let {
+                BasicText(it, style = Type.Callout.copy(color = soft))
+            }
+            Weather.hourly.drop(1).take(5).forEach { h ->
+                BasicText(
+                    "${h.hour}" + stringResource(R.string.w_hour) + " ${h.celsius}°",
+                    style = Type.Callout.copy(color = soft),
+                )
             }
         }
+
+        // The row follows focus, the way tvOS keeps the selected icon in view
 
         // The row follows focus, the way tvOS keeps the selected icon in view: it only moves when
         // the selected app would leave the edges, instead of re-centring on every step. With the
