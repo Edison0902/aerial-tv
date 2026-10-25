@@ -99,16 +99,17 @@ fun TvShelfHome(
         val margin = 56.dp
         val tileH = RowTile * 9f / 16f
         val pitch = RowTile + RowGap
-        val rowY = maxHeight * 0.40f
+        val rowY = maxHeight * 0.34f
 
         // Nothing floats top-left: the focused app's name sits centred under the dock, the way
         // Apple TV puts it, and the date and weather share the top-right corner with the pill.
 
-        // Right column: the date over one weather card — the current reading and the hours ahead.
+        // The date over one weather card, in the empty bottom-right corner beside the centred
+        // dock and its name — top-right would sit over the row as it scrolls in from the edge.
         Column(
             Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 78.dp, end = margin),
+                .align(Alignment.BottomEnd)
+                .padding(bottom = 22.dp, end = margin - 12.dp),
             horizontalAlignment = Alignment.End,
         ) {
             val dim = Color.White.copy(alpha = 0.82f)
