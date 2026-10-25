@@ -162,7 +162,7 @@ fun rememberDockBackdrop(appId: String?, art: app.orchard.tv.apps.TileArt?, phot
     return produceState(initialValue = dockBakes.get(cacheKey) ?: art?.backdrop ?: photo, cacheKey) {
         if (dockBakes.get(cacheKey) != null) return@produceState
         withContext(Dispatchers.Default) {
-            bakeDockBackdrop(art, photo, w, h)?.let { baked ->
+            bakeDockBackdrop(appId, art, photo, w, h)?.let { baked ->
                 dockBakes.put(cacheKey, baked)
                 value = baked
             }
@@ -170,34 +170,24 @@ fun rememberDockBackdrop(appId: String?, art: app.orchard.tv.apps.TileArt?, phot
     }.value
 }
 
-private fun bakeDockBackdrop(art: app.orchard.tv.apps.TileArt?, photo: ImageBitmap?, w: Int, h: Int): ImageBitmap? {
+private fun bakeDockBackdrop(appId: String?, art: app.orchard.tv.apps.TileArt?, photo: ImageBitmap?, w: Int, h: Int): ImageBitmap? {
     if (art == null && photo == null) return null
     val out = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
     val canvas2d = android.graphics.Canvas(out)
     canvas2d.drawColor(android.graphics.Color.BLACK)
 
-    val tint = (art?.tint ?: Color(0xFF3A6EA5)).toArgb()
-
-    // With no wallpaper the backdrop is composed, not stretched artwork: a deep base with a wide
-    // sweep of the app's tint from the upper left and a soft light over the title, which reads
-    // cleaner than the app's 64×36 ambient light blown up (that washed out into mud).
+    // With no wallpaper the backdrop is one of Aerial's own gradient presets — deep fields of
+    // light designed to read as wallpaper — chosen per app so it holds still while the focus
+    // moves but still varies. The app's own colour joins only as the glow behind the dock; a
+    // wash of the tint across the whole screen read as mud.
     if (photo == null) {
-        canvas2d.drawColor(android.graphics.Color.rgb(10, 12, 17))
-        // A quieter, desaturated sweep of the app's tint reads premium over the near-black base.
-        val hsv = FloatArray(3)
-        android.graphics.Color.colorToHSV(tint, hsv)
-        hsv[1] = hsv[1] * 0.5f
-        hsv[2] = (hsv[2] * 0.8f + 0.06f).coerceAtMost(0.62f)
-        val quietTint = android.graphics.Color.HSVToColor(hsv)
-        val sweep = android.graphics.Paint().apply {
-            shader = android.graphics.LinearGradient(
-                0f, 0f, w * 0.95f, h * 0.8f,
-                intArrayOf(quietTint and 0x00FFFFFF or (72 shl 24), 0x00000000),
-                floatArrayOf(0f, 1f),
-                android.graphics.Shader.TileMode.CLAMP,
-            )
-        }
-        canvas2d.drawRect(0f, 0f, w.toFloat(), h.toFloat(), sweep)
+        val preset = app.orchard.tv.wallpaper.Gradients.presets[
+            (appId?.hashCode()?.let { if (it < 0) -it else it } ?: 0) % app.orchard.tv.wallpaper.Gradients.presets.size]
+        canvas2d.drawBitmap(
+            app.orchard.tv.wallpaper.Gradients.render(preset, w, h),
+            null, android.graphics.Rect(0, 0, w, h),
+            android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG),
+        )
     } else {
         val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG).apply { alpha = 200 }
         canvas2d.drawBitmap(photo.asAndroidBitmap(), null, android.graphics.Rect(0, 0, w, h), paint)
