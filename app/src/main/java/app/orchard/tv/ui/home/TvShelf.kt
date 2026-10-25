@@ -106,40 +106,33 @@ fun TvShelfHome(
         val margin = 56.dp
         val tileH = RowTile * 9f / 16f
         val pitch = RowTile + RowGap
-        val rowY = maxHeight * 0.278f
+        val rowY = maxHeight * 0.40f
 
-        // Nothing floats top-left: the focused app's name sits centred under the dock, the way
-        // Apple TV puts it, and the date and weather share the top-right corner with the pill.
-
-        // tvOS arrangement: the left stays empty of chrome — there the next 24 hours draw as
-        // one quiet curve — and the time, date and reading stack right under the status pill.
-        Column(
-            Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 62.dp, end = margin),
-            horizontalAlignment = Alignment.End,
+        // One quiet line across the top — time, date, the reading now, the place — and the next
+        // 24 hours draw as a full-width curve under it, well above the row.
+        Row(
+            Modifier.padding(start = margin, top = 56.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             BasicText(timeText(now), style = Type.Title.copy(color = Color.White, shadow = quiet))
-            Row(
-                Modifier.padding(top = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                val dim = Color.White.copy(alpha = 0.80f)
-                Weather.now?.let { w ->
-                    GlyphIcon(glyphFor(w.kind, w.day), dim, 16.dp)
-                    BasicText(
-                        stringResource(conditionFor(w.kind)) + " ${w.celsius}°",
-                        style = Type.Callout.copy(color = dim),
-                    )
-                }
-                BasicText(dateText(now), style = Type.Callout.copy(color = dim))
-                Weather.place?.takeIf { it.length <= 12 }?.let {
-                    BasicText(it, style = Type.Callout.copy(color = Color.White.copy(alpha = 0.6f)))
-                }
+            val dim = Color.White.copy(alpha = 0.80f)
+            Weather.now?.let { w ->
+                GlyphIcon(glyphFor(w.kind, w.day), dim, 16.dp)
+                BasicText(
+                    stringResource(conditionFor(w.kind)) + " ${w.celsius}°",
+                    style = Type.Callout.copy(color = dim),
+                )
+            }
+            BasicText(dateText(now), style = Type.Callout.copy(color = dim))
+            Weather.place?.takeIf { it.length <= 12 }?.let {
+                BasicText(it, style = Type.Callout.copy(color = Color.White.copy(alpha = 0.6f)))
             }
         }
-        if (Weather.hourly.size >= 3) TemperatureCurve(Weather.hourly, Modifier.padding(start = margin, top = 26.dp))
+        if (Weather.hourly.size >= 3) TemperatureCurve(
+            Weather.hourly,
+            Modifier.padding(start = margin, end = margin, top = 76.dp),
+        )
 
         // The row follows focus, the way tvOS keeps the selected icon in view
 
@@ -212,7 +205,7 @@ fun TvShelfHome(
         if (dockApps.isNotEmpty()) Column(
             Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 104.dp),
+                .padding(bottom = 36.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box {
@@ -265,21 +258,21 @@ fun TvShelfHome(
 private fun TemperatureCurve(hours: List<app.orchard.tv.weather.WeatherHour>, modifier: Modifier = Modifier) {
     // The whole curve, labels and ticks end well above the row: a focused tile lifts and rings
     // about 17 dp past its top edge, and the curve must clear that too.
-    val w = 470.dp
-    val h = 88.dp
-    val top = 26.dp
-    val bottom = 60.dp
+    val h = 84.dp
+    val top = 22.dp
+    val bottom = 56.dp
     val temps = hours.map { it.celsius }
     val tmin = temps.min()
     val tmax = temps.max()
     val span = maxOf(1, tmax - tmin)
     val lowIdx = temps.indexOf(tmin)
     val highIdx = temps.indexOf(tmax)
-    fun px(i: Int) = w * i / (hours.size - 1)
-    fun py(t: Int) = bottom - (bottom - top) * (t - tmin) / span
+    BoxWithConstraints(modifier) {
+        val w = maxWidth
+        fun px(i: Int) = w * i / (hours.size - 1)
+        fun py(t: Int) = bottom - (bottom - top) * (t - tmin) / span
 
-    Box(modifier) {
-        Canvas(Modifier.size(w, h)) {
+        Canvas(Modifier.fillMaxWidth().height(h)) {
             val line = Path()
             val fill = Path()
             hours.forEachIndexed { i, hh ->
@@ -287,7 +280,7 @@ private fun TemperatureCurve(hours: List<app.orchard.tv.weather.WeatherHour>, mo
                 if (i == 0) { line.moveTo(x, y); fill.moveTo(x, bottom.toPx()) } else { line.lineTo(x, y) }
                 fill.lineTo(x, y)
             }
-            fill.lineTo(w.toPx(), bottom.toPx()); fill.close()
+            fill.lineTo(size.width, bottom.toPx()); fill.close()
             drawPath(fill, Brush.verticalGradient(listOf(Color(0xFF78A0E6).copy(alpha = 0.22f), Color.Transparent), startY = top.toPx(), endY = bottom.toPx()))
             drawPath(line, Color(0xFFA8C8FF), style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
             for (i in setOf(0, lowIdx, highIdx, hours.lastIndex)) {
@@ -300,19 +293,25 @@ private fun TemperatureCurve(hours: List<app.orchard.tv.weather.WeatherHour>, mo
             BasicText(
                 stringResource(res) + " " + temps[i] + "°",
                 style = Type.Caption.copy(color = Color.White.copy(alpha = 0.82f)),
-                modifier = Modifier.offset { IntOffset((px(i) - 30.dp).roundToPx(), (py(temps[i]) - 24.dp).roundToPx()) },
+                modifier = Modifier.offset { IntOffset((px(i) - 30.dp).roundToPx().coerceIn(0, w.roundToPx() - 60.dp.roundToPx()), (py(temps[i]) - 24.dp).roundToPx()) },
             )
         }
         label(0, R.string.w_now)
         if (lowIdx != 0) label(lowIdx, R.string.w_low)
         if (highIdx != 0 && highIdx != hours.lastIndex) label(highIdx, R.string.w_high)
-        if (hours.lastIndex !in setOf(0, lowIdx, highIdx)) label(hours.lastIndex, R.string.w_now)
+        if (hours.lastIndex !in setOf(0, lowIdx, highIdx)) {
+            BasicText(
+                "${hours[hours.lastIndex].hour}" + stringResource(R.string.w_hour) + " " + temps[hours.lastIndex] + "°",
+                style = Type.Caption.copy(color = Color.White.copy(alpha = 0.82f)),
+                modifier = Modifier.offset { IntOffset((px(hours.lastIndex) - 30.dp).roundToPx().coerceIn(0, w.roundToPx() - 60.dp.roundToPx()), (py(temps[hours.lastIndex]) - 24.dp).roundToPx()) },
+            )
+        }
         for (i in listOf(0, 6, 12, 18)) {
             hours.getOrNull(i)?.let { hh ->
                 BasicText(
                     "${hh.hour}" + stringResource(R.string.w_hour),
                     style = Type.Caption.copy(color = Color.White.copy(alpha = 0.55f)),
-                    modifier = Modifier.offset { IntOffset((px(i) - 14.dp).roundToPx(), 66.dp.roundToPx()) },
+                    modifier = Modifier.offset { IntOffset((px(i) - 14.dp).roundToPx().coerceIn(0, w.roundToPx() - 28.dp.roundToPx()), 62.dp.roundToPx()) },
                 )
             }
         }
