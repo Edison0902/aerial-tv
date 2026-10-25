@@ -315,7 +315,7 @@ fun HomeScreen(
         val dockBackdrop = if (dockHome) rememberDockBackdrop(
             focusedEntry?.key,
             ambientApp?.art,
-            Wallpapers.backdrop,
+            null,
             IntSize(with(density) { maxWidth.roundToPx() }, with(density) { maxHeight.roundToPx() }),
         ) else null
 

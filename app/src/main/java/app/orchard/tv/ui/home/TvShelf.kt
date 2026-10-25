@@ -106,7 +106,7 @@ fun TvShelfHome(
         val margin = 56.dp
         val tileH = RowTile * 9f / 16f
         val pitch = RowTile + RowGap
-        val rowY = 254.dp
+        val rowY = 262.dp
 
         // The Apple Weather hierarchy down the left: the time, the date, then the weather —
         // place, condition with the temperature — and the next 24 hours as a curve under it all.
@@ -145,7 +145,7 @@ fun TvShelfHome(
         }
         if (Weather.hourly.size >= 3) TemperatureCurve(
             Weather.hourly,
-            Modifier.padding(start = margin, end = margin, top = 168.dp),
+            Modifier.padding(start = margin, end = 404.dp, top = 168.dp),
         )
 
         // The row follows focus, the way tvOS keeps the selected icon in view: it only moves when
@@ -217,7 +217,7 @@ fun TvShelfHome(
         if (dockApps.isNotEmpty()) Column(
             Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 30.dp),
+                .padding(bottom = 22.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box {
@@ -304,7 +304,10 @@ private fun TemperatureCurve(hours: List<app.orchard.tv.weather.WeatherHour>, mo
         val label = @Composable { i: Int, res: Int ->
             BasicText(
                 stringResource(res) + " " + temps[i] + "°",
-                style = Type.Caption.copy(color = Color.White.copy(alpha = 0.82f)),
+                style = Type.Caption.copy(
+                    color = Color.White.copy(alpha = 0.85f),
+                    shadow = Shadow(Color.Black.copy(alpha = 0.55f), blurRadius = 6f),
+                ),
                 modifier = Modifier.offset { IntOffset((px(i) - 30.dp).roundToPx().coerceIn(0, w.roundToPx() - 60.dp.roundToPx()), (py(temps[i]) - 18.dp).roundToPx()) },
             )
         }
@@ -322,7 +325,10 @@ private fun TemperatureCurve(hours: List<app.orchard.tv.weather.WeatherHour>, mo
             hours.getOrNull(i)?.let { hh ->
                 BasicText(
                     "${hh.hour}" + stringResource(R.string.w_hour),
-                    style = Type.Caption.copy(color = Color.White.copy(alpha = 0.55f)),
+                    style = Type.Caption.copy(
+                        color = Color.White.copy(alpha = 0.6f),
+                        shadow = Shadow(Color.Black.copy(alpha = 0.5f), blurRadius = 5f),
+                    ),
                     modifier = Modifier.offset { IntOffset((px(i) - 14.dp).roundToPx().coerceIn(0, w.roundToPx() - 28.dp.roundToPx()), 48.dp.roundToPx()) },
                 )
             }

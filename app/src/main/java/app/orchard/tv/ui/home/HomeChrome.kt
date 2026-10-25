@@ -162,10 +162,13 @@ fun rememberDockBackdrop(appId: String?, art: app.orchard.tv.apps.TileArt?, phot
     return produceState(initialValue = dockBakes.get(cacheKey) ?: art?.backdrop ?: photo, cacheKey) {
         if (dockBakes.get(cacheKey) != null) return@produceState
         withContext(Dispatchers.Default) {
-            bakeDockBackdrop(appId, art, photo, w, h)?.let { baked ->
-                dockBakes.put(cacheKey, baked)
-                value = baked
-            }
+            android.util.Log.i("AerialBackdrop", "baking $cacheKey photo=${photo != null}")
+            runCatching { bakeDockBackdrop(appId, art, photo, w, h) }
+                .onSuccess { baked ->
+                    baked?.let { dockBakes.put(cacheKey, it); value = it }
+                    android.util.Log.i("AerialBackdrop", "baked $cacheKey -> ${baked != null}")
+                }
+                .onFailure { android.util.Log.e("AerialBackdrop", "bake failed", it) }
         }
     }.value
 }
@@ -176,23 +179,76 @@ private fun bakeDockBackdrop(appId: String?, art: app.orchard.tv.apps.TileArt?, 
     val canvas2d = android.graphics.Canvas(out)
     canvas2d.drawColor(android.graphics.Color.BLACK)
 
-    // With no wallpaper the backdrop is near-black cinema: one wide, soft, desaturated glow of
-    // the focused app's colour rising from behind the dock — a lamp under the bar — rather than
-    // a tint or a gradient across the whole screen, both of which read as murk.
+    // With no wallpaper the backdrop is a minimal landscape generated per app: a night sky in
+    // the app's hue — stars and a moon over two ridge lines — a scene rather than a colour
+    // wash. Deterministic per appId, drawn at bake resolution on the bake thread.
     if (photo == null) {
-        canvas2d.drawColor(android.graphics.Color.rgb(9, 11, 15))
-        val hsv = FloatArray(3)
-        android.graphics.Color.colorToHSV((art?.tint ?: Color(0xFF4A6FA5)).toArgb(), hsv)
-        hsv[1] = hsv[1] * 0.55f
-        val glow = android.graphics.Paint().apply {
-            shader = android.graphics.RadialGradient(
-                w * 0.5f, h * 1.02f, w * 0.85f,
-                intArrayOf(android.graphics.Color.HSVToColor(hsv) and 0x00FFFFFF or (66 shl 24), 0x00000000),
-                floatArrayOf(0f, 1f),
+        val hue = FloatArray(3).also {
+            android.graphics.Color.colorToHSV((art?.tint ?: Color(0xFF4A6FA5)).toArgb(), it)
+        }[0]
+        fun hsv(h: Float, s: Float, v: Float, a: Int = 255) =
+            android.graphics.Color.HSVToColor(
+                floatArrayOf((h + 360f) % 360f, s.coerceIn(0f, 1f), v.coerceIn(0f, 1f)),
+            ) and 0x00FFFFFF or (a shl 24)
+        val rnd = java.util.Random((appId ?: "aerial").hashCode().toLong())
+
+        val sky = android.graphics.Paint().apply {
+            shader = android.graphics.LinearGradient(
+                0f, 0f, 0f, h.toFloat(),
+                intArrayOf(hsv(hue, 0.60f, 0.12f), hsv(hue + 14f, 0.40f, 0.28f), hsv(hue + 26f, 0.32f, 0.38f)),
+                floatArrayOf(0f, 0.55f, 1f),
                 android.graphics.Shader.TileMode.CLAMP,
             )
         }
-        canvas2d.drawRect(0f, 0f, w.toFloat(), h.toFloat(), glow)
+        canvas2d.drawRect(0f, 0f, w.toFloat(), h.toFloat(), sky)
+
+        val star = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        repeat(130) {
+            star.color = hsv(hue, 0.08f, 1f, 40 + rnd.nextInt(150))
+            canvas2d.drawCircle(
+                rnd.nextFloat() * w, rnd.nextFloat() * h * 0.52f,
+                (0.8f + rnd.nextFloat() * 1.7f) * w / 960f, star,
+            )
+        }
+        val mx = w * 0.76f; val my = h * 0.15f; val mr = h * 0.05f
+        val moonGlow = android.graphics.Paint().apply {
+            shader = android.graphics.RadialGradient(
+                mx, my, mr * 5, intArrayOf(0xD8FFFFFF.toInt(), 0x00FFFFFF), floatArrayOf(0f, 1f),
+                android.graphics.Shader.TileMode.CLAMP,
+            )
+        }
+        canvas2d.drawCircle(mx, my, mr * 5, moonGlow)
+        canvas2d.drawCircle(mx, my, mr, android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0xF2FFFFFF.toInt() })
+
+        for (layer in 0..2) {
+            val baseY = h * (0.60f + layer * 0.115f)
+            val amp = h * (0.045f + layer * 0.028f)
+            val freq = (1.6f + layer * 0.9f) * 2.0 * Math.PI / w
+            val phase = rnd.nextFloat() * 6f
+            val ridge = android.graphics.Path().apply {
+                moveTo(0f, h.toFloat())
+                var x = 0f
+                while (x <= w) {
+                    lineTo(
+                        x, (baseY + kotlin.math.sin(x * freq + phase) * amp +
+                            kotlin.math.sin(x * freq * 2.63 + phase * 2) * amp * 0.35).toFloat(),
+                    )
+                    x += 6f
+                }
+                lineTo(w.toFloat(), h.toFloat()); close()
+            }
+            canvas2d.drawPath(ridge, android.graphics.Paint().apply { color = hsv(hue, 0.5f, 0.09f - layer * 0.026f) })
+            if (layer < 2) {
+                val haze = android.graphics.Paint().apply {
+                    shader = android.graphics.LinearGradient(
+                        0f, baseY, 0f, baseY + h * 0.10f,
+                        intArrayOf(hsv(hue, 0.2f, 0.32f, 42), 0x00000000), floatArrayOf(0f, 1f),
+                        android.graphics.Shader.TileMode.CLAMP,
+                    )
+                }
+                canvas2d.drawRect(0f, baseY, w.toFloat(), baseY + h * 0.10f, haze)
+            }
+        }
     } else {
         val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG).apply { alpha = 200 }
         canvas2d.drawBitmap(photo.asAndroidBitmap(), null, android.graphics.Rect(0, 0, w, h), paint)
