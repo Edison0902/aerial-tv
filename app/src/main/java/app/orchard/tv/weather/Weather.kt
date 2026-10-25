@@ -24,8 +24,10 @@ enum class WeatherKind { Clear, PartlyCloudy, Cloudy, Fog, Rain, Snow, Thunder }
 
 data class WeatherNow(val celsius: Int, val kind: WeatherKind, val day: Boolean)
 
-/** One hour of the forecast strip under the home title. [hour] is the hour of day. */
-data class WeatherHour(val hour: Int, val celsius: Int, val kind: WeatherKind, val day: Boolean)
+/** One hour of the forecast, [at] being the absolute hour it covers. */
+data class WeatherHour(val at: java.time.LocalDateTime, val celsius: Int, val kind: WeatherKind, val day: Boolean) {
+    val hour: Int get() = at.hour
+}
 
 /**
  * The weather beside the home clock, from Open-Meteo: no key, reachable from China. The place is
@@ -102,22 +104,29 @@ object Weather {
     }
 
     /** Off the main thread. */
-    private fun fetch(): Pair<WeatherNow, List<WeatherHour>> {
+    /** Off the main thread; null when there is no way to locate the place. */
+    private fun fetch(): Pair<WeatherNow, List<WeatherHour>>? {
         var lat = prefs.getFloat("lat", Float.NaN)
         var lon = prefs.getFloat("lon", Float.NaN)
         val guessedLongAgo = System.currentTimeMillis() - prefs.getLong("located_at", 0) > RELOCATE_MS
         if (!prefs.getBoolean("chosen", false) && (lat.isNaN() || guessedLongAgo)) {
-            // ipinfo.io: no key, and its "loc" is "lat,lon".
-            val ip = JSONObject(get("https://ipinfo.io/json"))
-            val loc = ip.getString("loc").split(',')
-            lat = loc[0].toFloat()
-            lon = loc[1].toFloat()
-            prefs.edit {
-                putFloat("lat", lat); putFloat("lon", lon)
-                putString("place", ip.optString("city").ifBlank { null })
-                putLong("located_at", System.currentTimeMillis())
-            }
+            // ipinfo.io: no key, and its "loc" is "lat,lon". A failure here — host blocked or
+            // gone (ipinfo went dark on the TV's new network, 2026-10-25) — must not abort the
+            // whole refresh: the cached coordinates still describe this place well enough.
+            runCatching {
+                val ip = JSONObject(get("https://ipinfo.io/json"))
+                val loc = ip.getString("loc").split(',')
+                val la = loc[0].toFloat()
+                val lo = loc[1].toFloat()
+                prefs.edit {
+                    putFloat("lat", la); putFloat("lon", lo)
+                    putString("place", ip.optString("city").ifBlank { null })
+                    putLong("located_at", System.currentTimeMillis())
+                }
+                lat = la; lon = lo
+            }.onFailure { Log.w(TAG, "ip locate failed; using cached coordinates", it) }
         }
+        if (lat.isNaN() || lon.isNaN()) return null
         val json = JSONObject(get("https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
             "&current=temperature_2m,weather_code,is_day&hourly=temperature_2m,weather_code,is_day" +
             "&forecast_days=2&timezone=auto"))
@@ -142,7 +151,7 @@ object Weather {
             val t = runCatching { java.time.LocalDateTime.parse(times.getString(i)) }.getOrNull() ?: continue
             if (t.isBefore(thisHour)) continue
             out.add(WeatherHour(
-                hour = t.hour,
+                at = t,
                 celsius = temps.getDouble(i).roundToInt(),
                 kind = kindOf(codes.getInt(i)),
                 day = days.optInt(i, 1) == 1,
@@ -153,15 +162,40 @@ object Weather {
     }
 
     private fun writeHourly(list: List<WeatherHour>): String = org.json.JSONArray().apply {
-        list.forEach { h -> put(org.json.JSONArray().apply { put(h.hour); put(h.celsius); put(h.kind.name); put(if (h.day) 1 else 0) }) }
+        list.forEach { h -> put(org.json.JSONArray().apply { put(h.at.toString()); put(h.celsius); put(h.kind.name); put(if (h.day) 1 else 0) }) }
     }.toString()
 
     private fun readHourly(json: String): List<WeatherHour> {
         val arr = org.json.JSONArray(json)
-        return (0 until arr.length()).map { i ->
-            val h = arr.getJSONArray(i)
-            WeatherHour(h.getInt(0), h.getInt(1), WeatherKind.valueOf(h.getString(2)), h.optInt(3, 1) == 1)
+        return (0 until arr.length()).mapNotNull { i ->
+            runCatching {
+                val h = arr.getJSONArray(i)
+                WeatherHour(java.time.LocalDateTime.parse(h.getString(0)), h.getInt(1), WeatherKind.valueOf(h.getString(2)), h.optInt(3, 1) == 1)
+            }.getOrNull()
         }
+    }
+
+    /**
+     * The hours still ahead, for the curve: points from an older fetch whose time has passed are
+     * dropped, so labels never show an hour that is already over.
+     */
+    fun hoursFromNow(now: java.time.LocalDateTime): List<WeatherHour> {
+        if (System.currentTimeMillis() - prefs.getLong("fetched_at", 0) > STALE_MS) return emptyList()
+        val thisHour = now.truncatedTo(java.time.temporal.ChronoUnit.HOURS)
+        return hourly.filter { !it.at.isBefore(thisHour) }
+    }
+
+    /**
+     * Called once a minute with the current time: when the clock rolls over into a new hour the
+     * 24-hour window is refetched, so the curve always starts at Now. Rate-limited apart from
+     * that rollover.
+     */
+    fun refreshOnHourRollover(now: java.time.LocalDateTime) {
+        if (!started) return
+        val stamp = hourly.firstOrNull()?.at?.let { it.toEpochSecond(java.time.ZoneOffset.UTC) / 3600L } ?: return
+        if (now.toEpochSecond(java.time.ZoneOffset.UTC) / 3600L == stamp) return
+        if (System.currentTimeMillis() - lastAttempt < 10 * 60_000L) return
+        refresh()
     }
 
     /**

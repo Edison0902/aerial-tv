@@ -143,8 +143,12 @@ fun TvShelfHome(
                 }
             }
         }
-        if (Weather.hourly.size >= 3) TemperatureCurve(
-            Weather.hourly,
+        // Once a minute, and again on every hour rollover, the 24-hour window slides forward:
+        // past hours drop out of the curve and a fresh fetch tops it back up to a full day.
+        LaunchedEffect(now.hour) { Weather.refreshOnHourRollover(now) }
+        val upcoming = Weather.hoursFromNow(now)
+        if (upcoming.size >= 3) TemperatureCurve(
+            upcoming,
             Modifier.padding(start = margin, end = 404.dp, top = 168.dp),
         )
 
@@ -301,26 +305,28 @@ private fun TemperatureCurve(hours: List<app.orchard.tv.weather.WeatherHour>, mo
         }
         // Every label sits above its point; below the line there is nothing but the hour ticks,
         // so the whole block stays clear of a lifted, ringed tile in the row under it.
-        val label = @Composable { i: Int, res: Int ->
-            BasicText(
-                stringResource(res) + " " + temps[i] + "°",
-                style = Type.Caption.copy(
-                    color = Color.White.copy(alpha = 0.85f),
-                    shadow = Shadow(Color.Black.copy(alpha = 0.55f), blurRadius = 6f),
-                ),
-                modifier = Modifier.offset { IntOffset((px(i) - 30.dp).roundToPx().coerceIn(0, w.roundToPx() - 60.dp.roundToPx()), (py(temps[i]) - 18.dp).roundToPx()) },
-            )
+        // Each label carries the condition of its hour — the sunny/rainy markers tell the trend
+        // at a glance.
+        val label = @Composable { i: Int, res: Int? ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                modifier = Modifier.offset { IntOffset((px(i) - 30.dp).roundToPx().coerceIn(0, w.roundToPx() - 76.dp.roundToPx()), (py(temps[i]) - 22.dp).roundToPx()) },
+            ) {
+                GlyphIcon(glyphFor(hours[i].kind, hours[i].day), Color.White.copy(alpha = 0.92f), 15.dp)
+                BasicText(
+                    (if (res != null) stringResource(res) + " " else "") + temps[i] + "°",
+                    style = Type.Caption.copy(
+                        color = Color.White.copy(alpha = 0.85f),
+                        shadow = Shadow(Color.Black.copy(alpha = 0.55f), blurRadius = 6f),
+                    ),
+                )
+            }
         }
         label(0, R.string.w_now)
         if (lowIdx != 0) label(lowIdx, R.string.w_low)
         if (highIdx != 0 && highIdx != hours.lastIndex) label(highIdx, R.string.w_high)
-        if (hours.lastIndex !in setOf(0, lowIdx, highIdx)) {
-            BasicText(
-                "${hours[hours.lastIndex].hour}" + stringResource(R.string.w_hour) + " " + temps[hours.lastIndex] + "°",
-                style = Type.Caption.copy(color = Color.White.copy(alpha = 0.82f)),
-                modifier = Modifier.offset { IntOffset((px(hours.lastIndex) - 30.dp).roundToPx().coerceIn(0, w.roundToPx() - 60.dp.roundToPx()), (py(temps[hours.lastIndex]) - 18.dp).roundToPx()) },
-            )
-        }
+        if (hours.lastIndex !in setOf(0, lowIdx, highIdx)) label(hours.lastIndex, null)
         for (i in listOf(0, 6, 12, 18)) {
             hours.getOrNull(i)?.let { hh ->
                 BasicText(
