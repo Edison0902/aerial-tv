@@ -147,7 +147,7 @@ object Weather {
                 kind = kindOf(codes.getInt(i)),
                 day = days.optInt(i, 1) == 1,
             ))
-            if (out.size == 8) break
+            if (out.size == 24) break
         }
         return out
     }

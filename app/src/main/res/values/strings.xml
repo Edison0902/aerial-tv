@@ -101,6 +101,8 @@
     <string name="w_thunder">Thunderstorms</string>
     <string name="w_now">Now</string>
     <string name="w_hour">:00</string>
+    <string name="w_low">Low</string>
+    <string name="w_high">High</string>
     <string name="ss_kind">Style</string>
     <string name="wp_weather_city">Location</string>
     <string name="st_home_standard">Standard</string>

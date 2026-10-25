@@ -100,6 +100,8 @@
     <string name="w_thunder">雷雨</string>
     <string name="w_now">现在</string>
     <string name="w_hour">时</string>
+    <string name="w_low">最低</string>
+    <string name="w_high">最高</string>
     <string name="ss_kind">类型</string>
     <string name="wp_weather_city">位置</string>
     <string name="st_home_standard">标准</string>
