@@ -106,35 +106,47 @@ fun TvShelfHome(
         val margin = 56.dp
         val tileH = RowTile * 9f / 16f
         val pitch = RowTile + RowGap
-        val rowY = maxHeight * 0.40f
+        val rowY = 254.dp
 
-        // One quiet line across the top — time, date, the reading now, the place — and the next
-        // 24 hours draw as a full-width curve under it, well above the row.
-        Row(
-            Modifier.padding(start = margin, top = 56.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            BasicText(timeText(now), style = Type.Title.copy(color = Color.White, shadow = quiet))
-            val dim = Color.White.copy(alpha = 0.80f)
-            Weather.now?.let { w ->
-                GlyphIcon(glyphFor(w.kind, w.day), dim, 16.dp)
+        // The Apple Weather hierarchy down the left: the time, the date, then the weather —
+        // place, condition with the temperature — and the next 24 hours as a curve under it all.
+        Column(Modifier.padding(start = margin, top = 30.dp)) {
+            BasicText(timeText(now), style = Type.Clock.copy(fontSize = 44.sp, lineHeight = 48.sp))
+            BasicText(
+                dateText(now),
+                style = Type.Headline.copy(color = Color.White.copy(alpha = 0.86f)),
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            Weather.place?.takeIf { it.isNotBlank() }?.let {
                 BasicText(
-                    stringResource(conditionFor(w.kind)) + " ${w.celsius}°",
-                    style = Type.Callout.copy(color = dim),
+                    it,
+                    style = Type.Callout.copy(color = Color.White.copy(alpha = 0.62f)),
+                    modifier = Modifier.padding(top = 5.dp),
                 )
             }
-            BasicText(dateText(now), style = Type.Callout.copy(color = dim))
-            Weather.place?.takeIf { it.length <= 12 }?.let {
-                BasicText(it, style = Type.Callout.copy(color = Color.White.copy(alpha = 0.6f)))
+            Weather.now?.let { w ->
+                Row(
+                    Modifier.padding(top = 6.dp),
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    GlyphIcon(glyphFor(w.kind, w.day), Color.White, 22.dp, Modifier.padding(bottom = 6.dp))
+                    BasicText(
+                        stringResource(conditionFor(w.kind)),
+                        style = Type.Headline.copy(color = Color.White.copy(alpha = 0.9f)),
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                    BasicText(
+                        "${w.celsius}°",
+                        style = Type.Clock.copy(fontSize = 30.sp, lineHeight = 32.sp),
+                    )
+                }
             }
         }
         if (Weather.hourly.size >= 3) TemperatureCurve(
             Weather.hourly,
-            Modifier.padding(start = margin, end = margin, top = 76.dp),
+            Modifier.padding(start = margin, end = margin, top = 168.dp),
         )
-
-        // The row follows focus, the way tvOS keeps the selected icon in view
 
         // The row follows focus, the way tvOS keeps the selected icon in view: it only moves when
         // the selected app would leave the edges, instead of re-centring on every step. With the
@@ -205,7 +217,7 @@ fun TvShelfHome(
         if (dockApps.isNotEmpty()) Column(
             Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 36.dp),
+                .padding(bottom = 30.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box {
@@ -258,9 +270,9 @@ fun TvShelfHome(
 private fun TemperatureCurve(hours: List<app.orchard.tv.weather.WeatherHour>, modifier: Modifier = Modifier) {
     // The whole curve, labels and ticks end well above the row: a focused tile lifts and rings
     // about 17 dp past its top edge, and the curve must clear that too.
-    val h = 84.dp
-    val top = 22.dp
-    val bottom = 56.dp
+    val h = 64.dp
+    val top = 16.dp
+    val bottom = 44.dp
     val temps = hours.map { it.celsius }
     val tmin = temps.min()
     val tmax = temps.max()
@@ -293,7 +305,7 @@ private fun TemperatureCurve(hours: List<app.orchard.tv.weather.WeatherHour>, mo
             BasicText(
                 stringResource(res) + " " + temps[i] + "°",
                 style = Type.Caption.copy(color = Color.White.copy(alpha = 0.82f)),
-                modifier = Modifier.offset { IntOffset((px(i) - 30.dp).roundToPx().coerceIn(0, w.roundToPx() - 60.dp.roundToPx()), (py(temps[i]) - 24.dp).roundToPx()) },
+                modifier = Modifier.offset { IntOffset((px(i) - 30.dp).roundToPx().coerceIn(0, w.roundToPx() - 60.dp.roundToPx()), (py(temps[i]) - 18.dp).roundToPx()) },
             )
         }
         label(0, R.string.w_now)
@@ -303,7 +315,7 @@ private fun TemperatureCurve(hours: List<app.orchard.tv.weather.WeatherHour>, mo
             BasicText(
                 "${hours[hours.lastIndex].hour}" + stringResource(R.string.w_hour) + " " + temps[hours.lastIndex] + "°",
                 style = Type.Caption.copy(color = Color.White.copy(alpha = 0.82f)),
-                modifier = Modifier.offset { IntOffset((px(hours.lastIndex) - 30.dp).roundToPx().coerceIn(0, w.roundToPx() - 60.dp.roundToPx()), (py(temps[hours.lastIndex]) - 24.dp).roundToPx()) },
+                modifier = Modifier.offset { IntOffset((px(hours.lastIndex) - 30.dp).roundToPx().coerceIn(0, w.roundToPx() - 60.dp.roundToPx()), (py(temps[hours.lastIndex]) - 18.dp).roundToPx()) },
             )
         }
         for (i in listOf(0, 6, 12, 18)) {
@@ -311,7 +323,7 @@ private fun TemperatureCurve(hours: List<app.orchard.tv.weather.WeatherHour>, mo
                 BasicText(
                     "${hh.hour}" + stringResource(R.string.w_hour),
                     style = Type.Caption.copy(color = Color.White.copy(alpha = 0.55f)),
-                    modifier = Modifier.offset { IntOffset((px(i) - 14.dp).roundToPx().coerceIn(0, w.roundToPx() - 28.dp.roundToPx()), 62.dp.roundToPx()) },
+                    modifier = Modifier.offset { IntOffset((px(i) - 14.dp).roundToPx().coerceIn(0, w.roundToPx() - 28.dp.roundToPx()), 48.dp.roundToPx()) },
                 )
             }
         }
