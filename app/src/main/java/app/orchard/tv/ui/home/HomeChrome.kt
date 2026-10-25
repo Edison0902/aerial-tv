@@ -155,58 +155,52 @@ private val dockBakes = android.util.LruCache<String, ImageBitmap>(5)
  */
 @Composable
 fun rememberDockBackdrop(appId: String?, art: app.orchard.tv.apps.TileArt?, photo: ImageBitmap?, canvas: IntSize): ImageBitmap? {
+    val context = LocalContext.current
     val scale = minOf(canvas.width / 960f, canvas.height / 540f, 4f / 3f)
     val w = (960 * scale).roundToInt()
     val h = (540 * scale).roundToInt()
-    val cacheKey = "$appId/${System.identityHashCode(photo)}/$w"
+    // One of four rendered mesh backdrops per app, pushed to files/backdrops over ADB.
+    val idx = ((appId?.hashCode()?.let { if (it < 0) -it else it } ?: 0) % 4 + 4) % 4
+    val scene = java.io.File(context.getExternalFilesDir(null), "backdrops/scene-$idx.png")
+    val cacheKey = "s$idx/${scene.lastModified()}/${System.identityHashCode(photo)}/$w"
     return produceState(initialValue = dockBakes.get(cacheKey) ?: art?.backdrop ?: photo, cacheKey) {
         if (dockBakes.get(cacheKey) != null) return@produceState
         withContext(Dispatchers.Default) {
-            android.util.Log.i("AerialBackdrop", "baking $cacheKey photo=${photo != null}")
-            runCatching { bakeDockBackdrop(appId, art, photo, w, h) }
+            runCatching { bakeDockBackdrop(art, photo, scene, idx, w, h) }
                 .onSuccess { baked ->
                     baked?.let { dockBakes.put(cacheKey, it); value = it }
-                    android.util.Log.i("AerialBackdrop", "baked $cacheKey -> ${baked != null}")
                 }
                 .onFailure { android.util.Log.e("AerialBackdrop", "bake failed", it) }
         }
     }.value
 }
 
-private fun bakeDockBackdrop(appId: String?, art: app.orchard.tv.apps.TileArt?, photo: ImageBitmap?, w: Int, h: Int): ImageBitmap? {
-    if (art == null && photo == null) return null
+/** The four mesh backdrops, decoded once. */
+private val sceneCache = HashMap<Int, android.graphics.Bitmap>()
+
+private fun sceneBitmap(scene: java.io.File, idx: Int): android.graphics.Bitmap? {
+    sceneCache[idx]?.let { return it }
+    if (!scene.exists()) return null
+    val bmp = android.graphics.BitmapFactory.decodeFile(scene.path) ?: return null
+    sceneCache[idx] = bmp
+    return bmp
+}
+
+private fun bakeDockBackdrop(art: app.orchard.tv.apps.TileArt?, photo: ImageBitmap?, scene: java.io.File, idx: Int, w: Int, h: Int): ImageBitmap? {
     val out = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
     val canvas2d = android.graphics.Canvas(out)
-    canvas2d.drawColor(android.graphics.Color.BLACK)
 
-    // With no wallpaper the backdrop is almost nothing at all: a deep near-black with one wide,
-    // heavily muted glow of the focused app's colour behind the dock. Anything more — stars,
-    // moons, ridges, sweeps — turned noisy and gaudy on a TV at two metres.
-    if (photo == null) {
-        canvas2d.drawColor(android.graphics.Color.rgb(9, 10, 13))
-        val hsv = FloatArray(3).also {
-            android.graphics.Color.colorToHSV((art?.tint ?: Color(0xFF4A6FA5)).toArgb(), it)
-        }
-        hsv[1] = hsv[1] * 0.4f
-        hsv[2] = hsv[2] * 0.45f + 0.04f
-        val glow = android.graphics.Paint().apply {
-            shader = android.graphics.RadialGradient(
-                w * 0.5f, h * 0.96f, w * 0.95f,
-                intArrayOf(android.graphics.Color.HSVToColor(hsv) and 0x00FFFFFF or (52 shl 24), 0x00000000),
-                floatArrayOf(0f, 1f),
-                android.graphics.Shader.TileMode.CLAMP,
-            )
-        }
-        canvas2d.drawRect(0f, 0f, w.toFloat(), h.toFloat(), glow)
-    } else {
+    // The owner's wallpaper wins; without one a rendered mesh backdrop fills the screen — deep,
+    // flowing colour the way Apple TV grades its shelves, with a shade for the tiles below.
+    if (photo != null) {
         val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG).apply { alpha = 200 }
         canvas2d.drawBitmap(photo.asAndroidBitmap(), null, android.graphics.Rect(0, 0, w, h), paint)
+    } else {
+        sceneBitmap(scene, idx)?.let { mesh ->
+            canvas2d.drawBitmap(mesh, null, android.graphics.Rect(0, 0, w, h), android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
+        } ?: canvas2d.drawColor(android.graphics.Color.rgb(9, 10, 13))
     }
 
-    // A shade keeping the name under the dock and the tiles legible over a photo.
-    if (photo != null) {
-
-    }
     val shade = android.graphics.Paint().apply {
         shader = android.graphics.LinearGradient(
             0f, 0f, 0f, h.toFloat(),
